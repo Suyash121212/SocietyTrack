@@ -11,7 +11,7 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: 'society-complaints',
+    folder: 'SocietyTrack',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
   },
 });

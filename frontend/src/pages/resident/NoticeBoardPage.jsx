@@ -3,7 +3,9 @@ import { axiosInstance } from '../../api/axios.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import NoticeCard from '../../components/NoticeCard.jsx';
 import PostNoticeForm from '../../components/PostNoticeForm.jsx';
+import Layout from '../../components/Layout.jsx';
 
+// Notice board for residents — read-only view of all society announcements
 export default function NoticeBoardPage() {
   const { isAdmin } = useAuth();
 
@@ -27,9 +29,13 @@ export default function NoticeBoardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Notice Board</h1>
+    <Layout>
+      <div className="p-6 md:p-8 max-w-2xl mx-auto">
+        {/* Page header */}
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-gray-900">Notice Board</h1>
+          <p className="text-sm text-neutral mt-0.5">Society announcements and updates</p>
+        </div>
 
         {isAdmin() && (
           <div className="mb-6">
@@ -38,21 +44,24 @@ export default function NoticeBoardPage() {
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-danger text-sm rounded-lg px-4 py-3 mb-4">
-            {error}
+          <div className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+            <span className="mt-0.5">⚠</span>
+            <span>{error}</span>
           </div>
         )}
 
         {loading ? (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="animate-pulse bg-white rounded-xl h-24 shadow-sm" />
+              <div key={i} className="animate-pulse bg-white rounded-xl h-24 border border-gray-100" />
             ))}
           </div>
         ) : notices.length === 0 ? (
-          <p className="text-center text-neutral py-16 text-sm">
-            No notices have been posted yet.
-          </p>
+          <div className="text-center py-20">
+            <p className="text-4xl mb-3">📣</p>
+            <p className="text-gray-500 font-medium">No notices posted yet</p>
+            <p className="text-sm text-neutral mt-1">Check back later for society announcements</p>
+          </div>
         ) : (
           <div className="space-y-4">
             {notices.map((n) => (
@@ -66,6 +75,6 @@ export default function NoticeBoardPage() {
           </div>
         )}
       </div>
-    </div>
+    </Layout>
   );
 }

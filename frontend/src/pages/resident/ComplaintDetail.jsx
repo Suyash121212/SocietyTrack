@@ -4,7 +4,9 @@ import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
 import StatusTimeline from '../../components/StatusTimeline.jsx';
+import Layout from '../../components/Layout.jsx';
 
+// Detail view for a single resident complaint with full status history
 export default function ComplaintDetail() {
   const { id } = useParams();
   const [complaint, setComplaint] = useState(null);
@@ -20,35 +22,42 @@ export default function ComplaintDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4">
-        <div className="max-w-2xl mx-auto space-y-4">
+      <Layout>
+        <div className="p-6 md:p-8 max-w-2xl mx-auto space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-white rounded-xl h-16 shadow-sm" />
+            <div key={i} className="animate-pulse bg-white rounded-xl h-16 border border-gray-100" />
           ))}
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (error || !complaint) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-danger">{error || 'Complaint not found.'}</p>
-      </div>
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <p className="text-danger">{error || 'Complaint not found.'}</p>
+        </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto">
+    <Layout>
+      <div className="p-6 md:p-8 max-w-2xl mx-auto">
+        {/* Page header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Complaint Detail</h1>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Complaint Detail</h1>
+            <p className="text-sm text-neutral mt-0.5 capitalize">{complaint.category.toLowerCase()} · {new Date(complaint.createdAt).toLocaleDateString()}</p>
+          </div>
           <Link to="/complaints" className="text-sm text-primary hover:underline">
             ← Back
           </Link>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-5">
+        <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-5">
+          {/* Badges row */}
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={complaint.status} />
             <PriorityBadge priority={complaint.priority} />
@@ -59,16 +68,19 @@ export default function ComplaintDetail() {
             )}
           </div>
 
+          {/* Category */}
           <div>
             <p className="text-xs text-neutral uppercase tracking-wide font-medium">Category</p>
             <p className="text-gray-800 mt-0.5 capitalize">{complaint.category.toLowerCase()}</p>
           </div>
 
+          {/* Description */}
           <div>
             <p className="text-xs text-neutral uppercase tracking-wide font-medium">Description</p>
             <p className="text-gray-700 mt-0.5 text-sm leading-relaxed">{complaint.description}</p>
           </div>
 
+          {/* Photo */}
           {complaint.photoUrl && (
             <div>
               <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-2">Photo</p>
@@ -80,6 +92,7 @@ export default function ComplaintDetail() {
             </div>
           )}
 
+          {/* Dates grid */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-xs text-neutral uppercase tracking-wide font-medium">Raised on</p>
@@ -93,12 +106,13 @@ export default function ComplaintDetail() {
             )}
           </div>
 
+          {/* Status history */}
           <div>
             <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-3">Status History</p>
             <StatusTimeline history={complaint.statusHistory} />
           </div>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 }

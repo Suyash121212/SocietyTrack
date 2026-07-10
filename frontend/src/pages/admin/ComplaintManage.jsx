@@ -1,9 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowLeft, AlertTriangle, Tag, CalendarClock, CheckCircle2,
+  FileText, ImageIcon, History, ChevronRight,
+} from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
 import StatusTimeline from '../../components/StatusTimeline.jsx';
+import Layout from '../../components/Layout.jsx';
 
 const VALID_TRANSITIONS = {
   OPEN:        ['IN_PROGRESS', 'RESOLVED'],
@@ -13,15 +19,34 @@ const VALID_TRANSITIONS = {
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
+/* ---------- small reusable meta field ---------- */
+const MetaField = ({ label, value, icon: Icon }) => (
+  <div className="flex items-start gap-2.5">
+    <span className="mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-50 text-gray-400 shrink-0">
+      <Icon size={13} strokeWidth={2.25} />
+    </span>
+    <div>
+      <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">{label}</p>
+      <p className="text-gray-800 mt-0.5 text-sm">{value}</p>
+    </div>
+  </div>
+);
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+};
+
+// Admin page for viewing and managing a single complaint
 export default function ComplaintManage() {
   const { id } = useParams();
 
-  const [complaint, setComplaint]         = useState(null);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState('');
-  const [statusForm, setStatusForm]       = useState({ status: '', note: '' });
-  const [statusError, setStatusError]     = useState('');
-  const [statusLoading, setStatusLoading] = useState(false);
+  const [complaint, setComplaint]             = useState(null);
+  const [loading, setLoading]                 = useState(true);
+  const [error, setError]                     = useState('');
+  const [statusForm, setStatusForm]           = useState({ status: '', note: '' });
+  const [statusError, setStatusError]         = useState('');
+  const [statusLoading, setStatusLoading]     = useState(false);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [priorityError, setPriorityError]     = useState('');
 
@@ -73,94 +98,135 @@ export default function ComplaintManage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <Layout>
+        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-white rounded-xl h-16 shadow-sm" />
+            <div
+              key={i}
+              className="animate-pulse bg-white rounded-xl h-16 border border-gray-100"
+              style={{ animationDelay: `${i * 60}ms` }}
+            />
           ))}
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (error || !complaint) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-danger">{error || 'Complaint not found.'}</p>
-      </div>
+      <Layout>
+        <div className="flex flex-col items-center justify-center gap-3 min-h-[60vh] text-center px-6">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
+            <AlertTriangle size={22} strokeWidth={1.75} />
+          </div>
+          <p className="text-red-600 font-medium">{error || 'Complaint not found.'}</p>
+          <Link to="/admin/complaints" className="text-sm text-indigo-600 hover:underline">
+            ← Back to All Complaints
+          </Link>
+        </div>
+      </Layout>
     );
   }
 
   const allowedTransitions = VALID_TRANSITIONS[complaint.status] ?? [];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
+    <Layout>
+      <div className="p-6 md:p-8 max-w-3xl mx-auto">
+        {/* Page header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Manage Complaint</h1>
-          <Link to="/admin/complaints" className="text-sm text-primary hover:underline">
-            ← All Complaints
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Manage Complaint</h1>
+            <p className="text-sm text-gray-500 mt-1">Review details and update status or priority</p>
+          </div>
+          <Link
+            to="/admin/complaints"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"
+          >
+            <ArrowLeft size={15} strokeWidth={2.25} />
+            All Complaints
           </Link>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-5">
-          <div className="flex items-center gap-2 flex-wrap">
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.06 } } }}
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6"
+        >
+          {/* Status & priority badges */}
+          <motion.div variants={fadeUp} className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={complaint.status} />
             <PriorityBadge priority={complaint.priority} />
             {complaint.isOverdue && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-danger">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
+                <AlertTriangle size={11} strokeWidth={2.5} />
                 Overdue
               </span>
             )}
-          </div>
+          </motion.div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-neutral uppercase tracking-wide font-medium">Category</p>
-              <p className="text-gray-800 mt-0.5 capitalize">{complaint.category.toLowerCase()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-neutral uppercase tracking-wide font-medium">Raised on</p>
-              <p className="text-gray-700 mt-0.5">{new Date(complaint.createdAt).toLocaleString()}</p>
-            </div>
+          {/* Meta grid */}
+          <motion.div variants={fadeUp} className="grid grid-cols-2 gap-5 pt-1">
+            <MetaField label="Category" value={complaint.category.charAt(0) + complaint.category.slice(1).toLowerCase()} icon={Tag} />
+            <MetaField label="Raised on" value={new Date(complaint.createdAt).toLocaleString()} icon={CalendarClock} />
             {complaint.resolvedAt && (
-              <div>
-                <p className="text-xs text-neutral uppercase tracking-wide font-medium">Resolved on</p>
-                <p className="text-gray-700 mt-0.5">{new Date(complaint.resolvedAt).toLocaleString()}</p>
-              </div>
+              <MetaField label="Resolved on" value={new Date(complaint.resolvedAt).toLocaleString()} icon={CheckCircle2} />
             )}
-          </div>
+          </motion.div>
 
-          <div>
-            <p className="text-xs text-neutral uppercase tracking-wide font-medium">Description</p>
-            <p className="text-gray-700 mt-0.5 text-sm leading-relaxed">{complaint.description}</p>
-          </div>
+          {/* Description */}
+          <motion.div variants={fadeUp}>
+            <div className="flex items-center gap-2 mb-2">
+              <FileText size={13} className="text-gray-400" strokeWidth={2.25} />
+              <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Description</p>
+            </div>
+            <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 rounded-xl p-4 border border-gray-100">
+              {complaint.description}
+            </p>
+          </motion.div>
 
+          {/* Photo */}
           {complaint.photoUrl && (
-            <div>
-              <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-2">Photo</p>
+            <motion.div variants={fadeUp}>
+              <div className="flex items-center gap-2 mb-2">
+                <ImageIcon size={13} className="text-gray-400" strokeWidth={2.25} />
+                <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Photo</p>
+              </div>
               <img
                 src={complaint.photoUrl}
                 alt="Complaint photo"
-                className="rounded-xl max-h-64 object-cover border border-gray-200"
+                className="rounded-xl max-h-64 object-cover border border-gray-200 shadow-sm"
               />
-            </div>
+            </motion.div>
           )}
 
+          {/* Update Status card */}
           {allowedTransitions.length > 0 && (
-            <div className="border-t border-gray-100 pt-5">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Update Status</p>
-              {statusError && (
-                <div className="bg-red-50 border border-red-200 text-danger text-sm rounded-lg px-4 py-2 mb-3">
-                  {statusError}
-                </div>
-              )}
+            <motion.div variants={fadeUp} className="bg-gradient-to-b from-indigo-50/60 to-gray-50 rounded-xl p-5 border border-indigo-100/60">
+              <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
+                <ChevronRight size={14} className="text-indigo-500" strokeWidth={2.5} />
+                Update Status
+              </p>
+              <AnimatePresence>
+                {statusError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
+                  >
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>{statusError}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <form onSubmit={handleStatusSubmit} className="space-y-3">
                 <select
                   value={statusForm.status}
                   onChange={(e) => setStatusForm((p) => ({ ...p, status: e.target.value }))}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow"
                 >
                   <option value="">Select new status</option>
                   {allowedTransitions.map((s) => (
@@ -172,45 +238,59 @@ export default function ComplaintManage() {
                   placeholder="Optional note…"
                   value={statusForm.note}
                   onChange={(e) => setStatusForm((p) => ({ ...p, note: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow"
                 />
-                <button
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
                   type="submit"
                   disabled={statusLoading}
-                  className="bg-primary text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-60"
+                  className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60 shadow-sm"
                 >
                   {statusLoading ? 'Updating…' : 'Update Status'}
-                </button>
+                </motion.button>
               </form>
-            </div>
+            </motion.div>
           )}
 
-          <div className="border-t border-gray-100 pt-5">
-            <p className="text-sm font-semibold text-gray-700 mb-3">Set Priority</p>
-            {priorityError && (
-              <div className="bg-red-50 border border-red-200 text-danger text-sm rounded-lg px-4 py-2 mb-3">
-                {priorityError}
-              </div>
-            )}
+          {/* Set Priority card */}
+          <motion.div variants={fadeUp} className="bg-gray-50 rounded-xl p-5 border border-gray-100">
+            <p className="text-sm font-semibold text-gray-800 mb-3">Set Priority</p>
+            <AnimatePresence>
+              {priorityError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
+                >
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <span>{priorityError}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <select
               defaultValue={complaint.priority ?? ''}
               onChange={handlePriorityChange}
               disabled={priorityLoading}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow disabled:opacity-60"
             >
               <option value="">No priority</option>
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
               ))}
             </select>
-          </div>
+          </motion.div>
 
-          <div className="border-t border-gray-100 pt-5">
-            <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-3">Status History</p>
+          {/* Status history */}
+          <motion.div variants={fadeUp}>
+            <div className="flex items-center gap-2 mb-3">
+              <History size={13} className="text-gray-400" strokeWidth={2.25} />
+              <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Status History</p>
+            </div>
             <StatusTimeline history={complaint.statusHistory} />
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
-    </div>
+    </Layout>
   );
 }
