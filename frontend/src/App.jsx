@@ -2,20 +2,16 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import ResidentDashboard from './pages/resident/Dashboard.jsx';
+import RaiseComplaint from './pages/resident/RaiseComplaint.jsx';
+import ComplaintDetail from './pages/resident/ComplaintDetail.jsx';
 
-// Placeholder components for pages not yet implemented (Tasks 12–15)
 const ComingSoon = ({ name }) => (
   <div className="flex items-center justify-center h-screen text-neutral">
-    <p className="text-lg">{name} — coming soon</p>
+    <p className="text-lg">{name}</p>
   </div>
 );
 
-// Resident pages (Task 12)
-const ResidentDashboard    = () => <ComingSoon name="My Complaints" />;
-const RaiseComplaint       = () => <ComingSoon name="Raise Complaint" />;
-const ResidentComplaintDetail = () => <ComingSoon name="Complaint Detail" />;
-
-// Admin pages (Tasks 13–15)
 const AdminDashboard       = () => <ComingSoon name="Admin Dashboard" />;
 const AdminAllComplaints   = () => <ComingSoon name="All Complaints" />;
 const AdminComplaintManage = () => <ComingSoon name="Manage Complaint" />;
@@ -26,11 +22,9 @@ const ConfigPage           = () => <ComingSoon name="Config" />;
 export default function App() {
   return (
     <Routes>
-      {/* Public routes */}
       <Route path="/login"    element={<Login />} />
       <Route path="/register" element={<Register />} />
 
-      {/* Resident routes */}
       <Route path="/complaints" element={
         <ProtectedRoute><ResidentDashboard /></ProtectedRoute>
       } />
@@ -38,13 +32,12 @@ export default function App() {
         <ProtectedRoute><RaiseComplaint /></ProtectedRoute>
       } />
       <Route path="/complaints/:id" element={
-        <ProtectedRoute><ResidentComplaintDetail /></ProtectedRoute>
+        <ProtectedRoute><ComplaintDetail /></ProtectedRoute>
       } />
       <Route path="/notices" element={
         <ProtectedRoute><NoticeBoardPage /></ProtectedRoute>
       } />
 
-      {/* Admin routes */}
       <Route path="/admin/dashboard" element={
         <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
       } />
@@ -61,7 +54,6 @@ export default function App() {
         <ProtectedRoute adminOnly><ConfigPage /></ProtectedRoute>
       } />
 
-      {/* Default redirect */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
