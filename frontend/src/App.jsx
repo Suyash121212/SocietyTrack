@@ -5,6 +5,10 @@ import Register from './pages/Register.jsx';
 import ResidentDashboard from './pages/resident/Dashboard.jsx';
 import RaiseComplaint from './pages/resident/RaiseComplaint.jsx';
 import ComplaintDetail from './pages/resident/ComplaintDetail.jsx';
+import AllComplaints from './pages/admin/AllComplaints.jsx';
+import ComplaintManage from './pages/admin/ComplaintManage.jsx';
+import NoticeBoardPage from './pages/resident/NoticeBoardPage.jsx';
+import NoticeManage from './pages/admin/NoticeManage.jsx';
 
 const ComingSoon = ({ name }) => (
   <div className="flex items-center justify-center h-screen text-neutral">
@@ -12,12 +16,8 @@ const ComingSoon = ({ name }) => (
   </div>
 );
 
-const AdminDashboard       = () => <ComingSoon name="Admin Dashboard" />;
-const AdminAllComplaints   = () => <ComingSoon name="All Complaints" />;
-const AdminComplaintManage = () => <ComingSoon name="Manage Complaint" />;
-const NoticeBoardPage      = () => <ComingSoon name="Notice Board" />;
-const AdminNoticeManage    = () => <ComingSoon name="Admin Notices" />;
-const ConfigPage           = () => <ComingSoon name="Config" />;
+const AdminDashboard = () => <ComingSoon name="Admin Dashboard" />;
+const ConfigPage     = () => <ComingSoon name="Config" />;
 
 export default function App() {
   return (
@@ -42,13 +42,13 @@ export default function App() {
         <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
       } />
       <Route path="/admin/complaints" element={
-        <ProtectedRoute adminOnly><AdminAllComplaints /></ProtectedRoute>
+        <ProtectedRoute adminOnly><AllComplaints /></ProtectedRoute>
       } />
       <Route path="/admin/complaints/:id" element={
-        <ProtectedRoute adminOnly><AdminComplaintManage /></ProtectedRoute>
+        <ProtectedRoute adminOnly><ComplaintManage /></ProtectedRoute>
       } />
       <Route path="/admin/notices" element={
-        <ProtectedRoute adminOnly><AdminNoticeManage /></ProtectedRoute>
+        <ProtectedRoute adminOnly><NoticeManage /></ProtectedRoute>
       } />
       <Route path="/admin/config" element={
         <ProtectedRoute adminOnly><ConfigPage /></ProtectedRoute>
