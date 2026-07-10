@@ -9,15 +9,8 @@ import AllComplaints from './pages/admin/AllComplaints.jsx';
 import ComplaintManage from './pages/admin/ComplaintManage.jsx';
 import NoticeBoardPage from './pages/resident/NoticeBoardPage.jsx';
 import NoticeManage from './pages/admin/NoticeManage.jsx';
-
-const ComingSoon = ({ name }) => (
-  <div className="flex items-center justify-center h-screen text-neutral">
-    <p className="text-lg">{name}</p>
-  </div>
-);
-
-const AdminDashboard = () => <ComingSoon name="Admin Dashboard" />;
-const ConfigPage     = () => <ComingSoon name="Config" />;
+import AdminDashboard from './pages/admin/AdminDashboard.jsx';
+import ConfigPage from './pages/admin/ConfigPage.jsx';
 
 export default function App() {
   return (
