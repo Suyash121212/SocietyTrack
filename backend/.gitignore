@@ -59,3 +59,4 @@ public/uploads/
 # Misc
 *.tgz
 *.zip
+/src/generated/prisma

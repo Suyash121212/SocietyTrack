@@ -1,0 +1,107 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  RESIDENT
+  ADMIN
+}
+
+enum Category {
+  ELECTRICAL
+  PLUMBING
+  SECURITY
+  CLEANING
+  OTHER
+}
+
+enum Status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(RESIDENT)
+  flatNo    String?  @map("flat_no")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  complaints      Complaint[]     @relation("UserComplaints")
+  statusChanges   StatusHistory[] @relation("ChangedByUser")
+  notices         Notice[]        @relation("AdminNotices")
+
+  @@map("users")
+}
+
+model Complaint {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  category    Category
+  description String
+  photoUrl    String?   @map("photo_url")
+  status      Status    @default(OPEN)
+  priority    Priority?
+  isOverdue   Boolean   @default(false) @map("is_overdue")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  user          User            @relation("UserComplaints", fields: [userId], references: [id])
+  statusHistory StatusHistory[] @relation("ComplaintHistory")
+
+  @@map("complaints")
+}
+
+model StatusHistory {
+  id          String   @id @default(uuid())
+  complaintId String   @map("complaint_id")
+  changedBy   String   @map("changed_by")
+  oldStatus   Status   @map("old_status")
+  newStatus   Status   @map("new_status")
+  note        String?
+  changedAt   DateTime @default(now()) @map("changed_at")
+
+  complaint Complaint @relation("ComplaintHistory", fields: [complaintId], references: [id])
+  admin     User      @relation("ChangedByUser",    fields: [changedBy],   references: [id])
+
+  @@map("status_history")
+}
+
+model Notice {
+  id          String   @id @default(uuid())
+  adminId     String   @map("admin_id")
+  title       String
+  body        String
+  isImportant Boolean  @default(false) @map("is_important")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  admin User @relation("AdminNotices", fields: [adminId], references: [id])
+
+  @@map("notices")
+}
+
+model AppConfig {
+  key   String @id
+  value String
+
+  @@map("app_config")
+}
