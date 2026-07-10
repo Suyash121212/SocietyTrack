@@ -32,7 +32,7 @@ export const getAllComplaints = async (req, res) => {
     where,
     orderBy: [
       { isOverdue: 'desc' },
-      { createdAt: 'asc' },
+      { createdAt: 'desc' },
     ],
     include: {
       user: { select: { flatNo: true } },
@@ -77,24 +77,23 @@ export const updateStatus = async (req, res) => {
     });
   }
 
-  const [updated] = await prisma.$transaction([
-    prisma.complaint.update({
-      where: { id },
-      data: {
-        status: newStatus,
-        resolvedAt: newStatus === 'RESOLVED' ? new Date() : undefined,
-      },
-    }),
-    prisma.statusHistory.create({
-      data: {
-        complaintId: id,
-        changedBy: req.user.id,
-        oldStatus: complaint.status,
-        newStatus,
-        note: note ?? null,
-      },
-    }),
-  ]);
+  const updated = await prisma.complaint.update({
+    where: { id },
+    data: {
+      status: newStatus,
+      resolvedAt: newStatus === 'RESOLVED' ? new Date() : undefined,
+    },
+  });
+
+  await prisma.statusHistory.create({
+    data: {
+      complaintId: id,
+      changedBy: req.user.id,
+      oldStatus: complaint.status,
+      newStatus,
+      note: note ?? null,
+    },
+  });
 
   // Fire-and-forget email notification
   sendStatusChangeEmail(
@@ -155,12 +154,10 @@ export const setOverdue = async (req, res) => {
 
 // GET /api/admin/dashboard
 export const getDashboard = async (req, res) => {
-  const [total, byStatusRaw, byCategoryRaw, overdue] = await prisma.$transaction([
-    prisma.complaint.count(),
-    prisma.complaint.groupBy({ by: ['status'], _count: { id: true } }),
-    prisma.complaint.groupBy({ by: ['category'], _count: { id: true } }),
-    prisma.complaint.count({ where: { isOverdue: true } }),
-  ]);
+  const total        = await prisma.complaint.count();
+  const byStatusRaw  = await prisma.complaint.groupBy({ by: ['status'],   _count: { id: true } });
+  const byCategoryRaw = await prisma.complaint.groupBy({ by: ['category'], _count: { id: true } });
+  const overdue      = await prisma.complaint.count({ where: { isOverdue: true } });
 
   const byStatus = { OPEN: 0, IN_PROGRESS: 0, RESOLVED: 0 };
   for (const row of byStatusRaw) {
