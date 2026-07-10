@@ -1,122 +1,68 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { ProtectedRoute } from './components/ProtectedRoute.jsx';
+import Login from './pages/Login.jsx';
+import Register from './pages/Register.jsx';
 
-function App() {
-  const [count, setCount] = useState(0)
+// Placeholder components for pages not yet implemented (Tasks 12–15)
+const ComingSoon = ({ name }) => (
+  <div className="flex items-center justify-center h-screen text-neutral">
+    <p className="text-lg">{name} — coming soon</p>
+  </div>
+);
 
+// Resident pages (Task 12)
+const ResidentDashboard    = () => <ComingSoon name="My Complaints" />;
+const RaiseComplaint       = () => <ComingSoon name="Raise Complaint" />;
+const ResidentComplaintDetail = () => <ComingSoon name="Complaint Detail" />;
+
+// Admin pages (Tasks 13–15)
+const AdminDashboard       = () => <ComingSoon name="Admin Dashboard" />;
+const AdminAllComplaints   = () => <ComingSoon name="All Complaints" />;
+const AdminComplaintManage = () => <ComingSoon name="Manage Complaint" />;
+const NoticeBoardPage      = () => <ComingSoon name="Notice Board" />;
+const AdminNoticeManage    = () => <ComingSoon name="Admin Notices" />;
+const ConfigPage           = () => <ComingSoon name="Config" />;
+
+export default function App() {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <Routes>
+      {/* Public routes */}
+      <Route path="/login"    element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
-      <div className="ticks"></div>
+      {/* Resident routes */}
+      <Route path="/complaints" element={
+        <ProtectedRoute><ResidentDashboard /></ProtectedRoute>
+      } />
+      <Route path="/complaints/new" element={
+        <ProtectedRoute><RaiseComplaint /></ProtectedRoute>
+      } />
+      <Route path="/complaints/:id" element={
+        <ProtectedRoute><ResidentComplaintDetail /></ProtectedRoute>
+      } />
+      <Route path="/notices" element={
+        <ProtectedRoute><NoticeBoardPage /></ProtectedRoute>
+      } />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      {/* Admin routes */}
+      <Route path="/admin/dashboard" element={
+        <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
+      } />
+      <Route path="/admin/complaints" element={
+        <ProtectedRoute adminOnly><AdminAllComplaints /></ProtectedRoute>
+      } />
+      <Route path="/admin/complaints/:id" element={
+        <ProtectedRoute adminOnly><AdminComplaintManage /></ProtectedRoute>
+      } />
+      <Route path="/admin/notices" element={
+        <ProtectedRoute adminOnly><AdminNoticeManage /></ProtectedRoute>
+      } />
+      <Route path="/admin/config" element={
+        <ProtectedRoute adminOnly><ConfigPage /></ProtectedRoute>
+      } />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {/* Default redirect */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
 }
-
-export default App
