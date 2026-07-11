@@ -1,18 +1,39 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, AlertCircle, Loader2, ImagePlus, X, Zap, Droplets, ShieldCheck, Sparkles, MoreHorizontal } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import Layout from '../../components/Layout.jsx';
 
-const CATEGORIES = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
+const TOKENS = {
+  '--bg': '#FAFAFA',
+  '--surface': '#FFFFFF',
+  '--border': '#E8EAED',
+  '--ink': '#111318',
+  '--ink-2': '#667085',
+  '--ink-3': '#98A2B3',
+  '--accent': '#3652E0',
+  '--accent-hover': '#2A41B8',
+  '--accent-soft': '#EEF1FE',
+  '--success': '#15803D',
+};
+
+// Values sent to the API are unchanged — only labels/icons are new.
+const CATEGORIES = [
+  { value: 'ELECTRICAL', label: 'Electrical', Icon: Zap },
+  { value: 'PLUMBING', label: 'Plumbing', Icon: Droplets },
+  { value: 'SECURITY', label: 'Security', Icon: ShieldCheck },
+  { value: 'CLEANING', label: 'Cleaning', Icon: Sparkles },
+  { value: 'OTHER', label: 'Other', Icon: MoreHorizontal },
+];
 
 // Form page for residents to submit a new maintenance complaint
 export default function RaiseComplaint() {
   const navigate = useNavigate();
 
-  const [form, setForm]       = useState({ category: '', description: '' });
-  const [photo, setPhoto]     = useState(null);
+  const [form, setForm] = useState({ category: '', description: '' });
+  const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [error, setError]     = useState('');
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,10 +48,21 @@ export default function RaiseComplaint() {
     setPreview(URL.createObjectURL(file));
   };
 
+  const handleRemovePhoto = () => {
+    setPhoto(null);
+    setPreview(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!form.category) {
+      setError('Please select a category.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -56,90 +88,129 @@ export default function RaiseComplaint() {
 
   return (
     <Layout>
-      <div className="p-6 md:p-8 max-w-xl mx-auto">
+      <div className="mx-auto max-w-xl p-6 font-['Inter'] text-[var(--ink)] md:p-8" style={TOKENS}>
         {/* Page header */}
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">Raise a Complaint</h1>
-          <p className="text-sm text-neutral mt-0.5">Submit a new maintenance request for your unit</p>
+          <h1 className="font-['Plus_Jakarta_Sans'] text-xl font-bold text-[var(--ink)]">Raise a complaint</h1>
+          <p className="mt-0.5 text-sm text-[var(--ink-2)]">Submit a new maintenance request for your unit</p>
         </div>
 
         {success && (
-          <div className="flex items-start gap-2 bg-green-50 border border-green-100 text-success text-sm rounded-lg px-4 py-3 mb-4">
-            <span className="mt-0.5">✓</span>
+          <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-[var(--success)]">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
             <span>{success}</span>
           </div>
         )}
         {error && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
-            <span className="mt-0.5">⚠</span>
+          <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
             <span>{error}</span>
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-100 p-6">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Category — visual picker instead of a native dropdown, so all 5 options are visible at once */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
-              <select
-                name="category"
-                value={form.category}
-                onChange={handleChange}
-                required
-                className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition bg-white"
-              >
-                <option value="">Select a category</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</option>
-                ))}
-              </select>
+              <label className="mb-2 block text-sm font-medium text-[var(--ink)]">Category</label>
+              <div className="grid grid-cols-3 gap-2.5">
+                {CATEGORIES.map(({ value, label, Icon }) => {
+                  const selected = form.category === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, category: value }))}
+                      className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-4 text-center transition-all ${
+                        selected
+                          ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                          : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/30 hover:bg-[var(--bg)]'
+                      }`}
+                    >
+                      <Icon
+                        className={`h-5 w-5 ${selected ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
+                        strokeWidth={1.75}
+                      />
+                      <span className={`text-xs font-medium ${selected ? 'text-[var(--accent)]' : 'text-[var(--ink-2)]'}`}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
+            {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label htmlFor="description" className="text-sm font-medium text-[var(--ink)]">
+                  Description
+                </label>
+                <span className="text-xs text-[var(--ink-3)]">{form.description.length} characters</span>
+              </div>
               <textarea
+                id="description"
                 name="description"
                 value={form.description}
                 onChange={handleChange}
                 required
                 rows={4}
-                className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition resize-none"
-                placeholder="Describe the issue in detail…"
+                placeholder="Describe the issue — what's wrong, where, and since when."
+                className="w-full resize-none rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
               />
             </div>
 
-            {/* Dropzone-style file upload area */}
+            {/* Photo */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Photo (optional)</label>
-              <label
-                className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-xl px-4 py-8 cursor-pointer hover:border-primary hover:bg-blue-50/30 transition-colors"
-              >
-                <span className="text-2xl">📷</span>
-                <span className="text-sm text-gray-500">
-                  {photo ? photo.name : 'Click to upload a photo'}
-                </span>
-                <span className="text-xs text-neutral">JPEG, PNG or WebP</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handlePhoto}
-                  className="sr-only"
-                />
-              </label>
-              {preview && (
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="mt-3 rounded-lg max-h-48 object-cover border border-gray-200 w-full"
-                />
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-sm font-medium text-[var(--ink)]">Photo</label>
+                <span className="text-xs text-[var(--ink-3)]">Optional</span>
+              </div>
+
+              {preview ? (
+                <div className="relative">
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className="max-h-56 w-full rounded-xl border border-[var(--border)] object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/75"
+                    aria-label="Remove photo"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--border)] px-4 py-8 transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]/40">
+                  <ImagePlus className="h-6 w-6 text-[var(--ink-3)]" strokeWidth={1.5} />
+                  <span className="text-sm text-[var(--ink-2)]">Click to upload a photo</span>
+                  <span className="text-xs text-[var(--ink-3)]">JPEG, PNG or WebP</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhoto}
+                    className="sr-only"
+                  />
+                </label>
               )}
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3 text-sm font-semibold text-white transition-all hover:bg-[var(--accent-hover)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? 'Submitting…' : 'Submit Complaint'}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  Submitting…
+                </>
+              ) : (
+                'Submit complaint'
+              )}
             </button>
           </form>
         </div>

@@ -5,6 +5,7 @@ import {
   updatePriority,
   setOverdue,
   getDashboard,
+  getWeeklyStats,
 } from '../controllers/admin.complaint.controller.js';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware.js';
 
@@ -15,6 +16,7 @@ router.use(verifyToken, requireAdmin);
 
 // Dashboard
 router.get('/dashboard', getDashboard);
+router.get('/dashboard/weekly', getWeeklyStats);
 
 // Complaint management
 router.get('/complaints', getAllComplaints);

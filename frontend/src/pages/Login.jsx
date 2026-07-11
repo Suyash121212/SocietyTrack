@@ -1,11 +1,43 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
+import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowLeft, Quote } from 'lucide-react';
 import { axiosInstance } from '../api/axios.js';
 import { useAuth } from '../context/AuthContext.jsx';
+
+
+const TOKENS = {
+  '--bg': '#FAFAFA',
+  '--surface': '#FFFFFF',
+  '--border': '#E8EAED',
+  '--ink': '#111318',
+  '--ink-2': '#667085',
+  '--ink-3': '#98A2B3',
+  '--accent': '#3652E0',
+  '--accent-hover': '#2A41B8',
+  '--accent-soft': '#EEF1FE',
+  '--accent-deep': '#22349E',
+};
+
+const TESTIMONIALS = [
+  { text: 'No more lost complaints in WhatsApp groups.', role: 'Resident, Tower B' },
+  { text: 'The dashboard gives me full visibility across all flats.', role: 'Society Manager' },
+];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const reduce = useReducedMotion();
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -33,80 +65,122 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex antialiased">
+    <div className="flex min-h-screen font-['Inter'] antialiased" style={TOKENS}>
+      {/* Left panel — brand + social proof */}
+      <div
+        className="relative hidden w-[42%] flex-col justify-between overflow-hidden px-12 py-10 lg:flex"
+        style={{ background: `linear-gradient(155deg, var(--accent) 0%, var(--accent-deep) 100%)` }}
+      >
+        {/* Restrained dot-grid texture instead of gradient blobs */}
+        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]" aria-hidden="true">
+          <defs>
+            <pattern id="dots" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+              <circle cx="1.5" cy="1.5" r="1.5" fill="white" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#dots)" />
+        </svg>
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/[0.06] blur-3xl" />
 
-      {/* Left panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[42%] bg-gradient-to-br from-primary via-blue-600 to-blue-700 px-12 py-10 relative overflow-hidden">
-        {/* Background circles */}
-        <div className="absolute -top-20 -right-20 w-72 h-72 bg-white/10 rounded-full" />
-        <div className="absolute -bottom-16 -left-16 w-56 h-56 bg-white/5 rounded-full" />
-        <div className="absolute top-1/2 right-8 w-32 h-32 bg-white/5 rounded-full" />
-
-        <div className="relative">
+        <motion.div
+          initial={reduce ? undefined : { opacity: 0, y: -8 }}
+          animate={reduce ? undefined : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="relative"
+        >
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-sm">S</div>
-            <span className="font-bold text-white text-lg">Society Tracker</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-white/15 text-sm font-bold text-white backdrop-blur">
+              S
+            </div>
+            <span className="font-['Plus_Jakarta_Sans'] text-lg font-bold text-white">Society Tracker</span>
           </Link>
-        </div>
+        </motion.div>
 
-        <div className="relative">
-          <h2 className="text-3xl font-bold text-white leading-tight mb-4">
-            Your society,<br />fully in control.
-          </h2>
-          <p className="text-blue-100 text-sm leading-relaxed mb-10 max-w-xs">
+        <motion.div
+          initial={reduce ? undefined : 'hidden'}
+          animate={reduce ? undefined : 'show'}
+          variants={stagger}
+          className="relative"
+        >
+          <motion.h2
+            variants={fadeUp}
+            className="mb-4 font-['Plus_Jakarta_Sans'] text-3xl font-bold leading-tight text-white"
+          >
+            Your society,
+            <br />
+            fully in control.
+          </motion.h2>
+          <motion.p variants={fadeUp} className="mb-10 max-w-xs text-sm leading-relaxed text-white/75">
             Track every maintenance request from submission to resolution with complete transparency and real-time updates.
-          </p>
+          </motion.p>
 
           <div className="space-y-3">
-            {[
-              { text: 'No more lost complaints in WhatsApp groups.', role: 'Resident, Tower B' },
-              { text: 'Dashboard gives me full visibility across all flats.', role: 'Society Manager' },
-            ].map((t) => (
-              <div key={t.role} className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/10">
-                <p className="text-white text-xs mb-1.5">"{t.text}"</p>
-                <p className="text-blue-200 text-xs font-medium">— {t.role}</p>
-              </div>
+            {TESTIMONIALS.map((t) => (
+              <motion.div
+                key={t.role}
+                variants={fadeUp}
+                className="rounded-xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur"
+              >
+                <Quote className="mb-1.5 h-3.5 w-3.5 text-white/40" fill="currentColor" strokeWidth={0} />
+                <p className="mb-1.5 text-xs leading-relaxed text-white">{t.text}</p>
+                <p className="text-xs font-medium text-white/60">— {t.role}</p>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        <p className="relative text-blue-200 text-xs">© {new Date().getFullYear()} Society Tracker</p>
+        <p className="relative text-xs text-white/50">© {new Date().getFullYear()} Society Tracker</p>
       </div>
 
-      {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center bg-gray-50 px-6 py-12">
-        <div className="w-full max-w-sm">
+      {/* Right panel — form */}
+      <div className="flex flex-1 items-center justify-center bg-[var(--bg)] px-6 py-12">
+        <motion.div
+          initial={reduce ? undefined : 'hidden'}
+          animate={reduce ? undefined : 'show'}
+          variants={stagger}
+          className="w-full max-w-sm"
+        >
           {/* Mobile logo */}
-          <Link to="/" className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-bold">S</div>
-            <span className="font-bold text-gray-900">Society Tracker</span>
-          </Link>
+          <motion.div variants={fadeUp}>
+            <Link to="/" className="mb-8 flex items-center gap-2 lg:hidden">
+              <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--accent)] text-xs font-bold text-white">
+                S
+              </div>
+              <span className="font-['Plus_Jakarta_Sans'] font-bold text-[var(--ink)]">Society Tracker</span>
+            </Link>
+          </motion.div>
 
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1">Welcome back</h1>
-            <p className="text-gray-500 text-sm">Sign in to your account to continue</p>
-          </div>
+          <motion.div variants={fadeUp} className="mb-8">
+            <h1 className="mb-1 font-['Plus_Jakarta_Sans'] text-2xl font-bold tracking-tight text-[var(--ink)]">
+              Welcome back
+            </h1>
+            <p className="text-sm text-[var(--ink-2)]">Sign in to your account to continue</p>
+          </motion.div>
 
           {error && (
-            <div className="flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3 mb-6">
-              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+              role="alert"
+            >
+              <AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2} />
               {error}
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <motion.form variants={fadeUp} onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email address</label>
+              <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-[var(--ink-2)]">
+                Email address
+              </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[var(--ink-3)]">
+                  <Mail className="h-4 w-4" strokeWidth={1.75} />
                 </div>
                 <input
+                  id="email"
                   type="email"
                   name="email"
                   value={form.email}
@@ -114,21 +188,22 @@ export default function Login() {
                   required
                   autoComplete="email"
                   placeholder="you@example.com"
-                  className="w-full bg-white border border-gray-200 text-gray-900 text-sm rounded-xl pl-10 pr-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all shadow-sm"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-3 pl-10 pr-4 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] shadow-sm transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Password</label>
+              <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-[var(--ink-2)]">
+                Password
+              </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[var(--ink-3)]">
+                  <Lock className="h-4 w-4" strokeWidth={1.75} />
                 </div>
                 <input
+                  id="password"
                   type={showPass ? 'text' : 'password'}
                   name="password"
                   value={form.password}
@@ -136,18 +211,15 @@ export default function Login() {
                   required
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="w-full bg-white border border-gray-200 text-gray-900 text-sm rounded-xl pl-10 pr-11 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all shadow-sm"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-3 pl-10 pr-11 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] shadow-sm transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass(!showPass)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-                  aria-label="Toggle password visibility"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
+                  aria-label={showPass ? 'Hide password' : 'Show password'}
                 >
-                  {showPass
-                    ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                    : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                  }
+                  {showPass ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
                 </button>
               </div>
             </div>
@@ -155,31 +227,36 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-200 mt-1"
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
             >
               {loading ? (
                 <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
                   Signing in…
                 </>
-              ) : 'Sign in'}
+              ) : (
+                'Sign in'
+              )}
             </button>
-          </form>
+          </motion.form>
 
-          <p className="text-center text-xs text-gray-500 mt-6">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-primary font-semibold hover:underline">
+          <motion.p variants={fadeUp} className="mt-6 text-center text-xs text-[var(--ink-2)]">
+            Don&apos;t have an account?{' '}
+            <Link to="/register" className="font-semibold text-[var(--accent)] hover:underline">
               Create one
             </Link>
-          </p>
+          </motion.p>
 
-          <p className="text-center mt-4">
-            <Link to="/" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to home</Link>
-          </p>
-        </div>
+          <motion.p variants={fadeUp} className="mt-4 flex justify-center">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
+            >
+              <ArrowLeft className="h-3 w-3" strokeWidth={2} />
+              Back to home
+            </Link>
+          </motion.p>
+        </motion.div>
       </div>
     </div>
   );

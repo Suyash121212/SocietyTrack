@@ -9,6 +9,7 @@ import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
 import StatusTimeline from '../../components/StatusTimeline.jsx';
+import Toast from '../../components/Toast.jsx';
 import Layout from '../../components/Layout.jsx';
 
 const VALID_TRANSITIONS = {
@@ -19,7 +20,6 @@ const VALID_TRANSITIONS = {
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
-/* ---------- small reusable meta field ---------- */
 const MetaField = ({ label, value, icon: Icon }) => (
   <div className="flex items-start gap-2.5">
     <span className="mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-50 text-gray-400 shrink-0">
@@ -37,7 +37,6 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
 };
 
-// Admin page for viewing and managing a single complaint
 export default function ComplaintManage() {
   const { id } = useParams();
 
@@ -49,6 +48,7 @@ export default function ComplaintManage() {
   const [statusLoading, setStatusLoading]     = useState(false);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [priorityError, setPriorityError]     = useState('');
+  const [toast, setToast]                     = useState(null);
 
   const fetchComplaint = useCallback(() => {
     setLoading(true);
@@ -61,20 +61,46 @@ export default function ComplaintManage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  useEffect(() => {
-    fetchComplaint();
-  }, [fetchComplaint]);
+  useEffect(() => { fetchComplaint(); }, [fetchComplaint]);
 
   const handleStatusSubmit = async (e) => {
     e.preventDefault();
     setStatusError('');
     setStatusLoading(true);
 
+    // Snapshot for rollback
+    const snapshot = complaint;
+
+    // Optimistic update — apply new status immediately
+    setComplaint((prev) => ({
+      ...prev,
+      status: statusForm.status,
+      resolvedAt: statusForm.status === 'RESOLVED' ? new Date().toISOString() : prev.resolvedAt,
+      statusHistory: [
+        ...prev.statusHistory,
+        {
+          oldStatus: prev.status,
+          newStatus: statusForm.status,
+          changedBy: 'Admin',
+          note: statusForm.note || null,
+          changedAt: new Date().toISOString(),
+        },
+      ],
+    }));
+    setStatusForm({ status: '', note: '' });
+
     try {
       await axiosInstance.patch(`/admin/complaints/${id}/status`, statusForm);
+      setToast({ message: `Status updated to ${statusForm.status.replace('_', ' ')}`, type: 'success' });
+      // Sync with server to get accurate timestamps and admin name
       fetchComplaint();
     } catch (err) {
-      setStatusError(err.response?.data?.error || 'Failed to update status.');
+      // Rollback on failure
+      setComplaint(snapshot);
+      setStatusForm({ status: snapshot.status === statusForm.status ? '' : statusForm.status, note: statusForm.note });
+      const msg = err.response?.data?.error || 'Failed to update status.';
+      setStatusError(msg);
+      setToast({ message: msg, type: 'error' });
     } finally {
       setStatusLoading(false);
     }
@@ -86,11 +112,21 @@ export default function ComplaintManage() {
     setPriorityError('');
     setPriorityLoading(true);
 
+    // Snapshot for rollback
+    const snapshot = complaint;
+
+    // Optimistic update
+    setComplaint((prev) => ({ ...prev, priority }));
+
     try {
       await axiosInstance.patch(`/admin/complaints/${id}/priority`, { priority });
-      fetchComplaint();
+      setToast({ message: `Priority set to ${priority}`, type: 'success' });
     } catch (err) {
-      setPriorityError(err.response?.data?.error || 'Failed to update priority.');
+      // Rollback on failure
+      setComplaint(snapshot);
+      const msg = err.response?.data?.error || 'Failed to update priority.';
+      setPriorityError(msg);
+      setToast({ message: msg, type: 'error' });
     } finally {
       setPriorityLoading(false);
     }
@@ -101,11 +137,8 @@ export default function ComplaintManage() {
       <Layout>
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              className="animate-pulse bg-white rounded-xl h-16 border border-gray-100"
-              style={{ animationDelay: `${i * 60}ms` }}
-            />
+            <div key={i} className="animate-pulse bg-white rounded-xl h-16 border border-gray-100"
+              style={{ animationDelay: `${i * 60}ms` }} />
           ))}
         </div>
       </Layout>
@@ -132,8 +165,15 @@ export default function ComplaintManage() {
 
   return (
     <Layout>
+      {toast && (
+        <Toast
+          message={toast.message}
+          status={toast.type === 'error' ? 'OPEN' : 'RESOLVED'}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       <div className="p-6 md:p-8 max-w-3xl mx-auto">
-        {/* Page header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Manage Complaint</h1>
@@ -154,7 +194,7 @@ export default function ComplaintManage() {
           variants={{ show: { transition: { staggerChildren: 0.06 } } }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6"
         >
-          {/* Status & priority badges */}
+          {/* Badges — update instantly via optimistic state */}
           <motion.div variants={fadeUp} className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={complaint.status} />
             <PriorityBadge priority={complaint.priority} />
@@ -166,7 +206,6 @@ export default function ComplaintManage() {
             )}
           </motion.div>
 
-          {/* Meta grid */}
           <motion.div variants={fadeUp} className="grid grid-cols-2 gap-5 pt-1">
             <MetaField label="Category" value={complaint.category.charAt(0) + complaint.category.slice(1).toLowerCase()} icon={Tag} />
             <MetaField label="Raised on" value={new Date(complaint.createdAt).toLocaleString()} icon={CalendarClock} />
@@ -175,7 +214,6 @@ export default function ComplaintManage() {
             )}
           </motion.div>
 
-          {/* Description */}
           <motion.div variants={fadeUp}>
             <div className="flex items-center gap-2 mb-2">
               <FileText size={13} className="text-gray-400" strokeWidth={2.25} />
@@ -186,24 +224,21 @@ export default function ComplaintManage() {
             </p>
           </motion.div>
 
-          {/* Photo */}
           {complaint.photoUrl && (
             <motion.div variants={fadeUp}>
               <div className="flex items-center gap-2 mb-2">
                 <ImageIcon size={13} className="text-gray-400" strokeWidth={2.25} />
                 <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Photo</p>
               </div>
-              <img
-                src={complaint.photoUrl}
-                alt="Complaint photo"
-                className="rounded-xl max-h-64 object-cover border border-gray-200 shadow-sm"
-              />
+              <img src={complaint.photoUrl} alt="Complaint photo"
+                className="rounded-xl max-h-64 object-cover border border-gray-200 shadow-sm" />
             </motion.div>
           )}
 
-          {/* Update Status card */}
+          {/* Update Status — optimistic submit */}
           {allowedTransitions.length > 0 && (
-            <motion.div variants={fadeUp} className="bg-gradient-to-b from-indigo-50/60 to-gray-50 rounded-xl p-5 border border-indigo-100/60">
+            <motion.div variants={fadeUp}
+              className="bg-gradient-to-b from-indigo-50/60 to-gray-50 rounded-xl p-5 border border-indigo-100/60">
               <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
                 <ChevronRight size={14} className="text-indigo-500" strokeWidth={2.5} />
                 Update Status
@@ -211,9 +246,7 @@ export default function ComplaintManage() {
               <AnimatePresence>
                 {statusError && (
                   <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
+                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                     className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
                   >
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -246,21 +279,19 @@ export default function ComplaintManage() {
                   disabled={statusLoading}
                   className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60 shadow-sm"
                 >
-                  {statusLoading ? 'Updating…' : 'Update Status'}
+                  {statusLoading ? 'Saving…' : 'Update Status'}
                 </motion.button>
               </form>
             </motion.div>
           )}
 
-          {/* Set Priority card */}
+          {/* Set Priority — optimistic change */}
           <motion.div variants={fadeUp} className="bg-gray-50 rounded-xl p-5 border border-gray-100">
             <p className="text-sm font-semibold text-gray-800 mb-3">Set Priority</p>
             <AnimatePresence>
               {priorityError && (
                 <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                   className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
                 >
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -269,7 +300,7 @@ export default function ComplaintManage() {
               )}
             </AnimatePresence>
             <select
-              defaultValue={complaint.priority ?? ''}
+              value={complaint.priority ?? ''}
               onChange={handlePriorityChange}
               disabled={priorityLoading}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow disabled:opacity-60"
@@ -281,7 +312,6 @@ export default function ComplaintManage() {
             </select>
           </motion.div>
 
-          {/* Status history */}
           <motion.div variants={fadeUp}>
             <div className="flex items-center gap-2 mb-3">
               <History size={13} className="text-gray-400" strokeWidth={2.25} />

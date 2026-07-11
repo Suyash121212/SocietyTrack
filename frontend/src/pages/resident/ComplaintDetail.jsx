@@ -1,32 +1,86 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { io } from 'socket.io-client';
+import { ArrowLeft, AlertCircle, RefreshCw, Image as ImageIcon, Calendar, CheckCircle2 } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
 import StatusTimeline from '../../components/StatusTimeline.jsx';
+import Toast from '../../components/Toast.jsx';
 import Layout from '../../components/Layout.jsx';
 
-// Detail view for a single resident complaint with full status history
+
+const TOKENS = {
+  '--bg': '#FAFAFA',
+  '--surface': '#FFFFFF',
+  '--border': '#E8EAED',
+  '--ink': '#111318',
+  '--ink-2': '#667085',
+  '--ink-3': '#98A2B3',
+  '--accent': '#3652E0',
+  '--accent-hover': '#2A41B8',
+  '--accent-soft': '#EEF1FE',
+  '--success': '#15803D',
+};
+
 export default function ComplaintDetail() {
   const { id } = useParams();
-  const [complaint, setComplaint] = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
 
-  useEffect(() => {
-    axiosInstance.get(`/complaints/${id}`)
+  const [complaint, setComplaint] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
+  const [live, setLive] = useState(false);
+
+  const fetchComplaint = useCallback(() => {
+    setError('');
+    axiosInstance
+      .get(`/complaints/${id}`)
       .then(({ data }) => setComplaint(data))
       .catch(() => setError('Failed to load complaint.'))
       .finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    fetchComplaint();
+  }, [fetchComplaint]);
+
+  useEffect(() => {
+    const socket = io(import.meta.env.VITE_API_URL.replace('/api', ''), {
+      transports: ['websocket'],
+    });
+
+    socket.on('connect', () => setLive(true));
+    socket.on('disconnect', () => setLive(false));
+
+    socket.emit('join-complaint', id);
+
+    socket.on('status-updated', (payload) => {
+      fetchComplaint();
+      setToast({
+        message: `Status changed from ${payload.oldStatus.replace('_', ' ')} → ${payload.newStatus.replace('_', ' ')}${payload.note ? `. Note: ${payload.note}` : ''}`,
+        status: payload.newStatus,
+      });
+    });
+
+    return () => {
+      socket.emit('leave-complaint', id);
+      socket.disconnect();
+    };
+  }, [id, fetchComplaint]);
+
   if (loading) {
     return (
       <Layout>
-        <div className="p-6 md:p-8 max-w-2xl mx-auto space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-white rounded-xl h-16 border border-gray-100" />
-          ))}
+        <div className="mx-auto max-w-4xl p-6 md:p-8" style={TOKENS}>
+          <div className="mb-6 space-y-3">
+            <div className="h-3 w-32 animate-pulse rounded bg-[var(--border)]" />
+            <div className="h-6 w-48 animate-pulse rounded bg-[var(--border)]" />
+          </div>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+            <div className="h-44 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)] lg:col-span-3" />
+            <div className="h-64 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)] lg:col-span-2" />
+          </div>
         </div>
       </Layout>
     );
@@ -35,8 +89,37 @@ export default function ComplaintDetail() {
   if (error || !complaint) {
     return (
       <Layout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-danger">{error || 'Complaint not found.'}</p>
+        <div className="flex min-h-[60vh] items-center justify-center px-6" style={TOKENS}>
+          <div className="max-w-sm text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+              <AlertCircle className="h-5 w-5 text-red-600" strokeWidth={1.75} />
+            </div>
+            <p className="mb-1 font-['Plus_Jakarta_Sans'] font-semibold text-[var(--ink)]">
+              {error || 'Complaint not found'}
+            </p>
+            <p className="mb-5 text-sm text-[var(--ink-2)]">
+              It may have been removed, or something went wrong while loading it.
+            </p>
+            <div className="flex justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  fetchComplaint();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
+              >
+                <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
+                Try again
+              </button>
+              <Link
+                to="/complaints"
+                className="inline-flex items-center rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--ink)] transition-colors hover:bg-[var(--bg)]"
+              >
+                Back to complaints
+              </Link>
+            </div>
+          </div>
         </div>
       </Layout>
     );
@@ -44,72 +127,107 @@ export default function ComplaintDetail() {
 
   return (
     <Layout>
-      <div className="p-6 md:p-8 max-w-2xl mx-auto">
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Complaint Detail</h1>
-            <p className="text-sm text-neutral mt-0.5 capitalize">{complaint.category.toLowerCase()} · {new Date(complaint.createdAt).toLocaleDateString()}</p>
-          </div>
-          <Link to="/complaints" className="text-sm text-primary hover:underline">
-            ← Back
+      {toast && <Toast message={toast.message} status={toast.status} onClose={() => setToast(null)} />}
+
+      <div className="mx-auto max-w-4xl p-6 font-['Inter'] text-[var(--ink)] md:p-8" style={TOKENS}>
+        {/* Header */}
+        <div className="mb-6">
+          <Link
+            to="/complaints"
+            className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--ink-2)] transition-colors hover:text-[var(--accent)]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+            Back to complaints
           </Link>
+
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="font-['Plus_Jakarta_Sans'] text-xl font-bold capitalize text-[var(--ink)]">
+                  {complaint.category.toLowerCase()}
+                </h1>
+                <span className="rounded-md bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink-3)]">
+                  #{String(id).slice(-6).toUpperCase()}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[var(--ink-2)]">
+                Submitted {new Date(complaint.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {live && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)]"
+                  title="This page updates automatically when the status changes — no need to refresh"
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                  Live
+                </span>
+              )}
+              {complaint.isOverdue && (
+                <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                  Overdue
+                </span>
+              )}
+              <StatusBadge status={complaint.status} />
+              <PriorityBadge priority={complaint.priority} />
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-5">
-          {/* Badges row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={complaint.status} />
-            <PriorityBadge priority={complaint.priority} />
-            {complaint.isOverdue && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-danger">
-                Overdue
-              </span>
-            )}
-          </div>
-
-          {/* Category */}
-          <div>
-            <p className="text-xs text-neutral uppercase tracking-wide font-medium">Category</p>
-            <p className="text-gray-800 mt-0.5 capitalize">{complaint.category.toLowerCase()}</p>
-          </div>
-
-          {/* Description */}
-          <div>
-            <p className="text-xs text-neutral uppercase tracking-wide font-medium">Description</p>
-            <p className="text-gray-700 mt-0.5 text-sm leading-relaxed">{complaint.description}</p>
-          </div>
-
-          {/* Photo */}
-          {complaint.photoUrl && (
-            <div>
-              <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-2">Photo</p>
-              <img
-                src={complaint.photoUrl}
-                alt="Complaint photo"
-                className="rounded-xl max-h-64 object-cover border border-gray-200"
-              />
+        {/* Content vs. timeline — separated so "what happened" and "where it stands" are easy to tell apart */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+          {/* Main content */}
+          <div className="space-y-5 lg:col-span-3">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Description</p>
+              <p className="text-sm leading-relaxed text-[var(--ink)]">{complaint.description}</p>
             </div>
-          )}
 
-          {/* Dates grid */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-neutral uppercase tracking-wide font-medium">Raised on</p>
-              <p className="text-gray-700 mt-0.5">{new Date(complaint.createdAt).toLocaleString()}</p>
-            </div>
-            {complaint.resolvedAt && (
-              <div>
-                <p className="text-xs text-neutral uppercase tracking-wide font-medium">Resolved on</p>
-                <p className="text-gray-700 mt-0.5">{new Date(complaint.resolvedAt).toLocaleString()}</p>
+            {complaint.photoUrl && (
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+                <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">
+                  <ImageIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Photo
+                </p>
+                <img
+                  src={complaint.photoUrl}
+                  alt="Complaint"
+                  className="max-h-80 w-full rounded-xl border border-[var(--border)] object-cover"
+                />
               </div>
             )}
           </div>
 
-          {/* Status history */}
-          <div>
-            <p className="text-xs text-neutral uppercase tracking-wide font-medium mb-3">Status History</p>
-            <StatusTimeline history={complaint.statusHistory} />
+          {/* Timeline sidebar — dates and status history live together since they're both "when" */}
+          <div className="lg:col-span-2">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Timeline</p>
+
+              <div className="mb-4 space-y-3">
+                <div className="flex items-start gap-2.5 text-sm">
+                  <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-3)]" strokeWidth={1.75} />
+                  <div>
+                    <p className="text-[var(--ink)]">{new Date(complaint.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-[var(--ink-3)]">Raised</p>
+                  </div>
+                </div>
+                {complaint.resolvedAt && (
+                  <div className="flex items-start gap-2.5 text-sm">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]" strokeWidth={1.75} />
+                    <div>
+                      <p className="text-[var(--ink)]">{new Date(complaint.resolvedAt).toLocaleString()}</p>
+                      <p className="text-xs text-[var(--ink-3)]">Resolved</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-[var(--border)] pt-4">
+                <StatusTimeline history={complaint.statusHistory} />
+              </div>
+            </div>
           </div>
         </div>
       </div>

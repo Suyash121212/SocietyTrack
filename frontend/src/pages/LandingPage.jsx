@@ -1,25 +1,133 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
+import {
+  Zap, Bell, LayoutDashboard, Megaphone, AlarmClock, ShieldCheck,
+  Building2, Smartphone, ArrowRight, Menu, X, Check,
+} from 'lucide-react';
+
+ 
+const TOKENS = {
+  '--bg': '#FAFAFA',
+  '--surface': '#FFFFFF',
+  '--section-alt': '#F6F7F9',
+  '--border': '#E8EAED',
+  '--ink': '#111318',
+  '--ink-2': '#667085',
+  '--ink-3': '#98A2B3',
+  '--accent': '#3652E0',
+  '--accent-hover': '#2A41B8',
+  '--accent-soft': '#EEF1FE',
+  '--success': '#15803D',
+};
+
+const CARD_SHADOW = '0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)';
+
+const NAV_LINKS = [
+  { label: 'Home', href: '#home' },
+  { label: 'Features', href: '#features' },
+  { label: 'How it works', href: '#how-it-works' },
+  { label: 'About', href: '#about' },
+];
 
 const FEATURES = [
-  { icon: '⚡', title: 'Instant complaint tracking', desc: 'Submit, monitor, and resolve maintenance requests with full transparency.' },
-  { icon: '🔔', title: 'Automated notifications', desc: 'Residents get email updates the moment their complaint status changes.' },
-  { icon: '📊', title: 'Admin dashboard', desc: 'Real-time stats, priority management, and overdue alerts in one view.' },
-  { icon: '📣', title: 'Society notices', desc: 'Broadcast important announcements to all residents instantly.' },
-  { icon: '🕐', title: 'Overdue detection', desc: 'Hourly checks flag unresolved complaints past the threshold automatically.' },
-  { icon: '🔐', title: 'Role-based security', desc: 'JWT authentication with strict resident and admin access separation.' },
+  { Icon: Zap, title: 'Instant complaint tracking', desc: 'Submit, monitor, and resolve maintenance requests with full transparency.' },
+  { Icon: Bell, title: 'Automated notifications', desc: 'Residents get an email the moment their complaint status changes.' },
+  { Icon: LayoutDashboard, title: 'Admin dashboard', desc: 'Real-time stats, priority management, and overdue alerts in one view.' },
+  { Icon: Megaphone, title: 'Society notices', desc: 'Broadcast important announcements to every resident instantly.' },
+  { Icon: AlarmClock, title: 'Overdue detection', desc: 'Hourly checks flag unresolved complaints past the threshold automatically.' },
+  { Icon: ShieldCheck, title: 'Role-based security', desc: 'JWT authentication with strict resident and admin access separation.' },
 ];
 
 const STEPS = [
   { num: '01', title: 'Register', desc: 'Create your resident account with your flat number in under 60 seconds.' },
-  { num: '02', title: 'Submit', desc: 'Raise a complaint with category, description and optional photo.' },
-  { num: '03', title: 'Track', desc: 'Admin reviews, assigns priority and moves it through workflow stages.' },
+  { num: '02', title: 'Submit', desc: 'Raise a complaint with category, description, and an optional photo.' },
+  { num: '03', title: 'Track', desc: 'Admin reviews, assigns priority, and moves it through workflow stages.' },
   { num: '04', title: 'Resolve', desc: 'Get notified by email at every update until the issue is closed.' },
 ];
+
+const ABOUT_POINTS = [
+  { Icon: Building2, title: 'Designed for real workflows', desc: 'Built around how society management actually works, not a generic ticketing system.' },
+  { Icon: Smartphone, title: 'Works on every device', desc: 'Fully responsive, so it works equally well on phones, tablets, and desktops.' },
+  { Icon: ShieldCheck, title: 'Secure by design', desc: 'JWT auth, bcrypt passwords, role-based access — security built in from day one.' },
+];
+
+const STAGES = ['Submitted', 'Assigned', 'In progress', 'Resolved'];
+
+/** Signature element — cycles through a complaint's real lifecycle to show
+ *  the product's core promise (visible status, always) rather than a
+ *  generic stat block. */
+function StatusTrail() {
+  const reduce = useReducedMotion();
+  const [active, setActive] = useState(reduce ? STAGES.length - 1 : 0);
+
+  useEffect(() => {
+    if (reduce) return undefined;
+    const id = setInterval(() => {
+      setActive((a) => (a + 1) % STAGES.length);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [reduce]);
+
+  return (
+    <div
+      className="inline-flex items-center rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-6 py-5"
+      style={{ boxShadow: `0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)` }}
+    >
+      {STAGES.map((label, i) => {
+        const state = i < active ? 'done' : i === active ? 'active' : 'pending';
+        return (
+          <div key={label} className="flex items-center">
+            <div className="flex flex-col items-center gap-2 px-4">
+              <span
+                className={`flex h-7 w-7 items-center justify-center rounded-full border transition-colors duration-500 ${
+                  state === 'done'
+                    ? 'border-[var(--accent)] bg-[var(--accent)]'
+                    : state === 'active'
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                    : 'border-[var(--border)] bg-[var(--bg)]'
+                }`}
+              >
+                {state === 'done' && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+                {state === 'active' && <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" />}
+                {state === 'pending' && <span className="h-1.5 w-1.5 rounded-full bg-[var(--ink-3)]" />}
+              </span>
+              <span
+                className={`whitespace-nowrap text-[11px] font-medium transition-colors duration-500 ${
+                  state === 'pending' ? 'text-[var(--ink-3)]' : 'text-[var(--ink)]'
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+            {i < STAGES.length - 1 && (
+              <div
+                className={`mb-5 h-px w-8 sm:w-10 transition-colors duration-500 ${
+                  i < active ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08 } },
+};
 
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const reduce = useReducedMotion();
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -28,149 +136,206 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 antialiased">
-
+    <div
+      className="min-h-screen bg-[var(--bg)] font-['Inter'] text-[var(--ink)] antialiased"
+      style={TOKENS}
+    >
       {/* Navbar */}
-      <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-200 ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-transparent'}`}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header
+        className={`fixed inset-x-0 top-0 z-50 transition-all duration-200 ${
+          scrolled ? 'border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur-md' : 'bg-transparent'
+        }`}
+      >
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-bold shadow-sm">S</div>
-            <span className="font-bold text-gray-900 tracking-tight">Society Tracker</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--accent)] text-xs font-bold text-white">
+              S
+            </div>
+            <span className="font-['Plus_Jakarta_Sans'] font-bold tracking-tight text-[var(--ink)]">
+              Society Tracker
+            </span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8">
-            {[['Home', '#home'], ['Features', '#features'], ['How it works', '#how-it-works'], ['About', '#about']].map(([label, href]) => (
-              <a key={href} href={href} className="text-sm text-gray-500 hover:text-gray-900 transition-colors font-medium">{label}</a>
+          <nav className="hidden items-center gap-8 md:flex">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="text-sm font-medium text-[var(--ink-2)] transition-colors hover:text-[var(--ink)]"
+              >
+                {link.label}
+              </a>
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors">
+          <div className="hidden items-center gap-3 md:flex">
+            <Link
+              to="/login"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--section-alt)] hover:text-[var(--ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            >
               Sign in
             </Link>
-            <Link to="/register" className="text-sm font-semibold bg-primary text-white px-5 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm">
+            <Link
+              to="/register"
+              className="rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            >
               Get started
             </Link>
           </div>
 
-          <button className="md:hidden text-gray-500 hover:text-gray-900" onClick={() => setMenuOpen(!menuOpen)}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {menuOpen
-                ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
-            </svg>
+          <button
+            className="text-[var(--ink-2)] hover:text-[var(--ink)] md:hidden"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {menuOpen && (
-          <div className="md:hidden bg-white border-t border-gray-100 px-6 py-4 space-y-3 shadow-lg">
-            {[['Home', '#home'], ['Features', '#features'], ['How it works', '#how-it-works'], ['About', '#about']].map(([label, href]) => (
-              <a key={href} href={href} onClick={() => setMenuOpen(false)} className="block text-sm font-medium text-gray-600 hover:text-primary py-1">{label}</a>
+          <div className="space-y-3 border-t border-[var(--border)] bg-[var(--surface)] px-6 py-4 shadow-lg md:hidden">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+                className="block py-1 text-sm font-medium text-[var(--ink-2)] hover:text-[var(--accent)]"
+              >
+                {link.label}
+              </a>
             ))}
-            <div className="flex gap-3 pt-3 border-t border-gray-100">
-              <Link to="/login" className="flex-1 text-center text-sm font-medium border border-gray-200 py-2.5 rounded-xl text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition">Sign in</Link>
-              <Link to="/register" className="flex-1 text-center text-sm font-semibold bg-primary text-white py-2.5 rounded-xl hover:bg-blue-700 transition">Get started</Link>
+            <div className="flex gap-3 border-t border-[var(--border)] pt-3">
+              <Link
+                to="/login"
+                className="flex-1 rounded-xl border border-[var(--border)] py-2.5 text-center text-sm font-medium text-[var(--ink)] hover:bg-[var(--section-alt)]"
+              >
+                Sign in
+              </Link>
+              <Link
+                to="/register"
+                className="flex-1 rounded-xl bg-[var(--accent)] py-2.5 text-center text-sm font-semibold text-white hover:bg-[var(--accent-hover)]"
+              >
+                Get started
+              </Link>
             </div>
           </div>
         )}
       </header>
 
       {/* Hero */}
-      <section id="home" className="relative pt-32 pb-24 px-6 overflow-hidden">
-        {/* Subtle background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-50/60 via-white to-white pointer-events-none" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-blue-100/40 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 text-primary text-xs font-semibold px-4 py-1.5 rounded-full mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+      <section id="home" className="relative overflow-hidden px-6 pb-24 pt-36">
+        <motion.div
+          initial={reduce ? undefined : 'hidden'}
+          animate={reduce ? undefined : 'show'}
+          variants={stagger}
+          className="relative mx-auto max-w-4xl text-center"
+        >
+          <motion.div
+            variants={fadeUp}
+            className="mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-1.5 text-xs font-semibold text-[var(--accent)]"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
             Built for residential societies
-          </div>
+          </motion.div>
 
-          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.08] text-gray-900 mb-6">
+          <motion.h1
+            variants={fadeUp}
+            className="mb-6 font-['Plus_Jakarta_Sans'] text-5xl font-extrabold leading-[1.08] tracking-tight text-[var(--ink)] md:text-6xl"
+          >
             Society maintenance,
             <br />
-            <span className="text-primary">finally organised.</span>
-          </h1>
+            <span className="text-[var(--accent)]">finally organised.</span>
+          </motion.h1>
 
-          <p className="text-lg text-gray-500 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <motion.p
+            variants={fadeUp}
+            className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-[var(--ink-2)]"
+          >
             Give every resident a direct line to raise complaints. Give your management team the tools to track, prioritise, and resolve them — with zero follow-up required.
-          </p>
+          </motion.p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-16">
-            <Link to="/register"
-              className="inline-flex items-center justify-center gap-2 bg-primary text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-200">
+          <motion.div variants={fadeUp} className="mb-16 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              to="/register"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-8 py-3.5 font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            >
               Start for free
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
+              <ArrowRight className="h-4 w-4" />
             </Link>
-            <a href="#how-it-works"
-              className="inline-flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-8 py-3.5 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all shadow-sm">
+            <a
+              href="#how-it-works"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-8 py-3.5 font-medium text-[var(--ink)] transition-colors hover:bg-[var(--section-alt)]"
+            >
               See how it works
             </a>
-          </div>
+          </motion.div>
 
-          {/* Stats row */}
-          <div className="inline-flex items-center divide-x divide-gray-200 bg-white border border-gray-100 rounded-2xl shadow-sm px-2">
-            {[
-              { val: '100%', label: 'Transparent' },
-              { val: 'Real-time', label: 'Status updates' },
-              { val: 'Zero', label: 'Lost complaints' },
-            ].map((s) => (
-              <div key={s.label} className="px-8 py-4 text-center">
-                <p className="text-xl font-bold text-gray-900">{s.val}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+          <motion.div variants={fadeUp} className="flex justify-center">
+            <StatusTrail />
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* Features */}
-      <section id="features" className="py-24 px-6 bg-gray-50">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-primary text-xs font-bold uppercase tracking-widest mb-3">Features</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Everything in one platform</h2>
-            <p className="text-gray-500 max-w-lg mx-auto text-sm leading-relaxed">
+      <section id="features" className="bg-[var(--section-alt)] px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-14 text-center">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[var(--accent)]">Features</p>
+            <h2 className="mb-4 font-['Plus_Jakarta_Sans'] text-3xl font-bold text-[var(--ink)] md:text-4xl">
+              Everything in one platform
+            </h2>
+            <p className="mx-auto max-w-lg text-sm leading-relaxed text-[var(--ink-2)]">
               From submission to resolution — every tool your society needs, built into a single clean interface.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <motion.div
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: '-80px' }}
+            variants={stagger}
+            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          >
             {FEATURES.map((f) => (
-              <div key={f.title}
-                className="bg-white rounded-2xl p-6 border border-gray-100 hover:border-blue-100 hover:shadow-md transition-all group">
-                <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-xl mb-5 group-hover:bg-blue-100 transition-colors">{f.icon}</div>
-                <h3 className="font-semibold text-gray-900 mb-2 text-sm">{f.title}</h3>
-                <p className="text-xs text-gray-500 leading-relaxed">{f.desc}</p>
-              </div>
+              <motion.div
+                key={f.title}
+                variants={fadeUp}
+                className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 transition-all hover:-translate-y-0.5 hover:border-[var(--accent)]/30"
+                style={{ boxShadow: `0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)` }}
+              >
+                <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--accent-soft)] transition-colors group-hover:bg-[var(--accent)]/15">
+                  <f.Icon className="h-5 w-5 text-[var(--accent)]" strokeWidth={1.75} />
+                </div>
+                <h3 className="mb-2 text-sm font-semibold text-[var(--ink)]">{f.title}</h3>
+                <p className="text-xs leading-relaxed text-[var(--ink-2)]">{f.desc}</p>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="py-24 px-6 bg-white">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-primary text-xs font-bold uppercase tracking-widest mb-3">Process</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Simple four-step workflow</h2>
-            <p className="text-gray-500 max-w-lg mx-auto text-sm leading-relaxed">
-              From complaint submission to full resolution in a structured, accountable flow.
+      <section id="how-it-works" className="bg-[var(--surface)] px-6 py-24">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-14 text-center">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[var(--accent)]">Process</p>
+            <h2 className="mb-4 font-['Plus_Jakarta_Sans'] text-3xl font-bold text-[var(--ink)] md:text-4xl">
+              Simple four-step workflow
+            </h2>
+            <p className="mx-auto max-w-lg text-sm leading-relaxed text-[var(--ink-2)]">
+              From complaint submission to full resolution, in a structured, accountable flow.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
-            <div className="hidden md:block absolute top-8 left-[10%] right-[10%] h-px bg-gradient-to-r from-transparent via-blue-100 to-transparent" />
+          <div className="relative grid grid-cols-1 gap-8 md:grid-cols-4">
+            <div className="absolute left-[10%] right-[10%] top-8 hidden h-px bg-[var(--border)] md:block" />
             {STEPS.map((s) => (
               <div key={s.num} className="relative text-center">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 border-2 border-blue-100 flex items-center justify-center text-primary font-extrabold text-lg mx-auto mb-5 relative z-10 shadow-sm">
+                <div className="relative z-10 mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-[var(--accent-soft)] bg-[var(--accent-soft)] text-lg font-extrabold text-[var(--accent)]">
                   {s.num}
                 </div>
-                <h3 className="font-bold text-gray-900 text-sm mb-2">{s.title}</h3>
-                <p className="text-gray-500 text-xs leading-relaxed">{s.desc}</p>
+                <h3 className="mb-2 text-sm font-bold text-[var(--ink)]">{s.title}</h3>
+                <p className="text-xs leading-relaxed text-[var(--ink-2)]">{s.desc}</p>
               </div>
             ))}
           </div>
@@ -178,32 +343,36 @@ export default function LandingPage() {
       </section>
 
       {/* About */}
-      <section id="about" className="py-24 px-6 bg-gray-50">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <section id="about" className="bg-[var(--section-alt)] px-6 py-24">
+        <div className="mx-auto max-w-5xl">
+          <div className="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
             <div>
-              <p className="text-primary text-xs font-bold uppercase tracking-widest mb-3">About</p>
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 leading-tight">
-                Built to eliminate<br />maintenance chaos.
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[var(--accent)]">About</p>
+              <h2 className="mb-6 font-['Plus_Jakarta_Sans'] text-3xl font-bold leading-tight text-[var(--ink)] md:text-4xl">
+                Built to eliminate
+                <br />
+                maintenance chaos.
               </h2>
-              <p className="text-gray-500 text-sm leading-relaxed mb-4">
+              <p className="mb-4 text-sm leading-relaxed text-[var(--ink-2)]">
                 Maintenance complaints disappearing into WhatsApp threads. Residents with no visibility. Managers with no system. Society Tracker was built to fix exactly that.
               </p>
-              <p className="text-gray-500 text-sm leading-relaxed">
+              <p className="text-sm leading-relaxed text-[var(--ink-2)]">
                 Residents get real-time updates. Admins get a structured dashboard. Nothing gets lost.
               </p>
             </div>
             <div className="space-y-3">
-              {[
-                { icon: '🏗️', title: 'Designed for real workflows', desc: 'Built around how society management actually works, not a generic ticketing system.' },
-                { icon: '📱', title: 'Works on all devices', desc: 'Fully responsive — works on phones, tablets and desktops for everyone.' },
-                { icon: '🔐', title: 'Secure by design', desc: 'JWT auth, bcrypt passwords, role-based access — security built in from day one.' },
-              ].map((item) => (
-                <div key={item.title} className="flex gap-4 p-5 rounded-2xl bg-white border border-gray-100 hover:border-blue-100 hover:shadow-sm transition-all">
-                  <div className="text-2xl shrink-0">{item.icon}</div>
+              {ABOUT_POINTS.map((item) => (
+                <div
+                  key={item.title}
+                  className="flex gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--accent)]/30"
+                  style={{ boxShadow: `0 1px 2px rgba(16,24,40,0.04)` }}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)]">
+                    <item.Icon className="h-5 w-5 text-[var(--accent)]" strokeWidth={1.75} />
+                  </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-0.5">{item.title}</p>
-                    <p className="text-xs text-gray-500 leading-relaxed">{item.desc}</p>
+                    <p className="mb-0.5 text-sm font-semibold text-[var(--ink)]">{item.title}</p>
+                    <p className="text-xs leading-relaxed text-[var(--ink-2)]">{item.desc}</p>
                   </div>
                 </div>
               ))}
@@ -213,21 +382,26 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24 px-6 bg-primary">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 tracking-tight">
+      <section className="bg-[var(--accent)] px-6 py-24">
+        <div className="mx-auto max-w-3xl text-center">
+          <h2 className="mb-4 font-['Plus_Jakarta_Sans'] text-3xl font-bold tracking-tight text-white md:text-4xl">
             Ready to get organised?
           </h2>
-          <p className="text-blue-100 mb-8 text-sm leading-relaxed max-w-md mx-auto">
+          <p className="mx-auto mb-8 max-w-md text-sm leading-relaxed text-white/80">
             Join your society on Society Tracker. Registration takes less than two minutes.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link to="/register"
-              className="inline-flex items-center justify-center gap-2 bg-white text-primary font-semibold px-8 py-3.5 rounded-xl hover:bg-blue-50 transition-all shadow-sm">
-              Create your account →
+          <div className="flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              to="/register"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-8 py-3.5 font-semibold text-[var(--accent)] shadow-sm transition-colors hover:bg-white/90"
+            >
+              Create your account
+              <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link to="/login"
-              className="inline-flex items-center justify-center border border-blue-400 text-white font-medium px-8 py-3.5 rounded-xl hover:bg-blue-600 transition-all">
+            <Link
+              to="/login"
+              className="inline-flex items-center justify-center rounded-xl border border-white/30 px-8 py-3.5 font-medium text-white transition-colors hover:bg-white/10"
+            >
               Sign in
             </Link>
           </div>
@@ -235,41 +409,53 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mb-8">
+      <footer className="bg-[#0B0D12] px-6 py-12 text-[#8A8F98]">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-8 flex flex-col items-start justify-between gap-8 md:flex-row md:items-center">
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-bold">S</div>
-                <span className="font-bold text-white">Society Tracker</span>
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)] text-xs font-bold text-white">
+                  S
+                </div>
+                <span className="font-['Plus_Jakarta_Sans'] font-bold text-white">Society Tracker</span>
               </div>
-              <p className="text-sm text-gray-500 max-w-xs">
+              <p className="max-w-xs text-sm text-[#8A8F98]">
                 Modern maintenance management for residential societies.
               </p>
             </div>
 
             <div className="flex gap-10">
               <div>
-                <p className="text-white text-xs font-semibold mb-3 uppercase tracking-wide">Navigation</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white">Navigation</p>
                 <div className="space-y-2">
-                  {[['Home', '#home'], ['Features', '#features'], ['How it works', '#how-it-works'], ['About', '#about']].map(([label, href]) => (
-                    <a key={href} href={href} className="block text-sm text-gray-500 hover:text-white transition-colors">{label}</a>
+                  {NAV_LINKS.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      className="block text-sm text-[#8A8F98] transition-colors hover:text-white"
+                    >
+                      {link.label}
+                    </a>
                   ))}
                 </div>
               </div>
               <div>
-                <p className="text-white text-xs font-semibold mb-3 uppercase tracking-wide">Account</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white">Account</p>
                 <div className="space-y-2">
-                  <Link to="/login" className="block text-sm text-gray-500 hover:text-white transition-colors">Sign in</Link>
-                  <Link to="/register" className="block text-sm text-gray-500 hover:text-white transition-colors">Register</Link>
+                  <Link to="/login" className="block text-sm text-[#8A8F98] transition-colors hover:text-white">
+                    Sign in
+                  </Link>
+                  <Link to="/register" className="block text-sm text-[#8A8F98] transition-colors hover:text-white">
+                    Register
+                  </Link>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-[#5F636B] sm:flex-row">
             <p>© {new Date().getFullYear()} Society Tracker. All rights reserved.</p>
-            <p>Built with React, Node.js, PostgreSQL &amp; Prisma</p>
+            <p></p>
           </div>
         </div>
       </footer>
