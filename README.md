@@ -381,7 +381,7 @@ Create a new Neon project and copy the **Session mode** connection string (port 
 
 ## Author
 
-**[Suyash Kakade]** — [Vishwakarma Institute of Information Technology]
+**Suyash Kakade** — Vishwakarma Institute of Information Technology
 [GitHub](https://github.com/Suyash121212) · [LinkedIn](https://linkedin.com/in/suyash-kakade)
 
-Built as part of the Unthinkable Solutions fullstack engineering assessment.
+
