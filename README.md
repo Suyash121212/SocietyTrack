@@ -267,7 +267,7 @@ Prerequisites: Node.js 20+, PostgreSQL 14+, a Cloudinary account, a Gmail accoun
 ### `backend/.env`
 
 ```bash
-# PostgreSQL connection string — from Supabase, local Postgres, or any PG host
+# PostgreSQL connection string — from Neon, local Postgres, or any PG host
 DATABASE_URL=postgresql://user:password@localhost:5432/society_tracker
 
 # Secret used to sign JWTs — any long random string
@@ -364,9 +364,9 @@ Connect the repo to Vercel. Set root directory to `frontend`. Set `VITE_API_URL`
 
 Create a new **Web Service** on Render. Set root directory to `backend`, build command to `npm install`, and start command to `node src/server.js`. Add all backend environment variables in the Render dashboard. Render assigns a public HTTPS URL — use this as `VITE_API_URL` in Vercel.
 
-### Database → Supabase
+### Database → Neon
 
-Create a new Supabase project and copy the **Session mode** connection string (port 5432) into `DATABASE_URL`. Run `npx prisma migrate deploy` once from your local machine (pointing at the Supabase URL) to apply the schema, then run the seed script to create the admin account.
+Create a new Neon project and copy the **Session mode** connection string (port 5432) into `DATABASE_URL`. Run `npx prisma migrate deploy` once from your local machine (pointing at the Neon URL) to apply the schema, then run the seed script to create the admin account.
 
 ---
 
