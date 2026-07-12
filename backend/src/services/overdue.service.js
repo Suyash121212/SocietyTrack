@@ -13,7 +13,7 @@ export const startOverdueCron = () => {
 
       const marked = await prisma.complaint.updateMany({
         where: {
-          status: { not: 'RESOLVED' },
+          status: { notIn: ['RESOLVED'] },
           createdAt: { lt: cutoff },
           isOverdue: false,
         },

@@ -31,13 +31,17 @@ async function main() {
   await prisma.appConfig.upsert({
     where: { key: 'overdue_days' },
     update: {},
-    create: {
-      key: 'overdue_days',
-      value: '7',
-    },
+    create: { key: 'overdue_days', value: '7' },
   });
-
   console.log('[Seed] AppConfig: overdue_days = 7');
+
+  // Seed default reopen_window_days config
+  await prisma.appConfig.upsert({
+    where: { key: 'reopen_window_days' },
+    update: {},
+    create: { key: 'reopen_window_days', value: '3' },
+  });
+  console.log('[Seed] AppConfig: reopen_window_days = 3');
 }
 
 main()

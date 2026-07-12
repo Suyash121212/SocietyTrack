@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { ArrowLeft, AlertCircle, RefreshCw, Image as ImageIcon, Calendar, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertCircle, RefreshCw, Image as ImageIcon, Calendar, CheckCircle2, RotateCcw, Clock, Timer } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
@@ -31,6 +31,7 @@ export default function ComplaintDetail() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
   const [live, setLive] = useState(false);
+  const [reopening, setReopening] = useState(false);
 
   const fetchComplaint = useCallback(() => {
     setError('');
@@ -44,6 +45,22 @@ export default function ComplaintDetail() {
   useEffect(() => {
     fetchComplaint();
   }, [fetchComplaint]);
+
+  const handleReopen = async () => {
+    setReopening(true);
+    try {
+      await axiosInstance.patch(`/complaints/${id}/reopen`);
+      fetchComplaint();
+      setToast({ message: 'Complaint reopened. The admin team has been notified.', status: 'REOPENED' });
+    } catch (err) {
+      setToast({
+        message: err.response?.data?.error || 'Failed to reopen complaint.',
+        status: 'OPEN',
+      });
+    } finally {
+      setReopening(false);
+    }
+  };
 
   useEffect(() => {
     const socket = io(import.meta.env.VITE_API_URL.replace('/api', ''), {
@@ -227,6 +244,40 @@ export default function ComplaintDetail() {
               <div className="border-t border-[var(--border)] pt-4">
                 <StatusTimeline history={complaint.statusHistory} />
               </div>
+
+              {/* Computed metrics */}
+              <div className="mt-4 border-t border-[var(--border)] pt-4 space-y-2.5">
+                {complaint.timeInStatus && (
+                  <div className="flex items-center gap-2 text-xs text-[var(--ink-2)]">
+                    <Clock className="h-3.5 w-3.5 text-[var(--ink-3)]" strokeWidth={1.75} />
+                    <span>In current status: <span className="font-medium text-[var(--ink)]">{complaint.timeInStatus}</span></span>
+                  </div>
+                )}
+                {complaint.resolutionTime && (
+                  <div className="flex items-center gap-2 text-xs text-[var(--ink-2)]">
+                    <Timer className="h-3.5 w-3.5 text-[var(--ink-3)]" strokeWidth={1.75} />
+                    <span>Resolution time: <span className="font-medium text-[var(--ink)]">{complaint.resolutionTime}</span></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Reopen — only for RESOLVED within the window */}
+              {complaint.canReopen && (
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  <p className="mb-2 text-xs text-[var(--ink-3)]">
+                    Not satisfied with the resolution? Reopen this complaint.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleReopen}
+                    disabled={reopening}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />
+                    {reopening ? 'Reopening…' : 'Reopen complaint'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -2,12 +2,14 @@ const STATUS_STYLES = {
   OPEN:        'bg-gray-100 text-gray-600',
   IN_PROGRESS: 'bg-amber-100 text-amber-700',
   RESOLVED:    'bg-green-100 text-green-700',
+  REOPENED:    'bg-purple-100 text-purple-700',
 };
 
 const STATUS_LABELS = {
   OPEN:        'Open',
   IN_PROGRESS: 'In Progress',
   RESOLVED:    'Resolved',
+  REOPENED:    'Reopened',
 };
 
 export default function StatusBadge({ status }) {

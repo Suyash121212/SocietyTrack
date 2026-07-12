@@ -48,9 +48,10 @@ PostgreSQL was chosen over MongoDB because the data is inherently relational —
 | ✅ Full status change history per complaint | ✅ Update complaint status with state-machine validation |
 | ✅ Email notification on every status change | ✅ Assign priority (Low / Medium / High) |
 | ✅ Notice board for society announcements | ✅ Manually flag a complaint as overdue |
-| | ✅ Post and delete notices, mark as important |
+| ✅ Reopen resolved complaints within configurable window | ✅ Post and delete notices, mark as important |
 | | ✅ Email all residents on important notices |
-| | ✅ Configure the overdue detection threshold (days) |
+| | ✅ Configure overdue threshold and reopen window (days) |
+| | ✅ Dashboard: avg resolution time + Reopened count |
 
 ---
 
@@ -80,15 +81,32 @@ PostgreSQL was chosen over MongoDB because the data is inherently relational —
 
 ### Complaint Status History Model
 
-Every status transition creates a `StatusHistory` record linking the complaint, the admin who made the change, the old and new status, and an optional note. This is an append-only audit trail — the complaint row itself only holds the current state, while history is fully reconstructable from `status_history`. Transitions are validated server-side against a state machine (`OPEN → IN_PROGRESS → RESOLVED`; no backwards transitions). This prevents partial updates and makes the timeline on the complaint detail page trivially accurate.
+Every status transition creates a `StatusHistory` record linking the complaint, the admin who made the change, the old and new status, and an optional note. This is an append-only audit trail — the complaint row itself only holds the current state, while history is fully reconstructable from `status_history`. Transitions are enforced server-side against an explicit state machine map:
+
+```
+OPEN → IN_PROGRESS | RESOLVED
+IN_PROGRESS → RESOLVED
+RESOLVED → REOPENED  (resident only, within configurable window)
+REOPENED → IN_PROGRESS | RESOLVED
+```
+
+No if-checks, no ad-hoc guards — the map is the single source of truth and any transition not in it is rejected with a clear error message. This prevents partial updates and makes the timeline on the complaint detail page an accurate, ordered record.
+
+### Reopen Flow
+
+When a resident marks a complaint as resolved-but-not-actually-fixed, they can reopen it — but only within a configurable window (default 3 days, stored in `app_config`). After that window closes the API returns a 400 with an explicit message directing them to raise a new complaint. This mirrors how Zendesk and Jira handle ticket reopening: `RESOLVED → REOPENED` is a resident action, not an admin one. Reopening clears `resolvedAt`, writes a `StatusHistory` row under the resident's ID, and pushes a socket event to the complaint room so the admin sees it live. Admins then advance `REOPENED → IN_PROGRESS` or directly to `RESOLVED` again using the same status update endpoint.
 
 ### Overdue Detection
 
-A `node-cron` job runs every hour. It reads the `overdue_days` value from `app_config` (default 7, configurable by admin at runtime), computes a cutoff timestamp, and runs two `updateMany` queries: one to mark unresolved complaints older than the cutoff as overdue, and one to clear the overdue flag on anything that has since been resolved. This approach keeps the flag always current without requiring a trigger or a separate background worker. Admins can also manually flag a complaint via the API if they want to escalate before the threshold.
+A `node-cron` job runs every hour. It reads `overdue_days` from `app_config` (default 7, configurable by admin at runtime), computes a cutoff timestamp, and runs two `updateMany` queries: one to mark unresolved complaints (`OPEN`, `IN_PROGRESS`, `REOPENED`) older than the cutoff as overdue, and one to clear the overdue flag on anything that has since been `RESOLVED`. This approach keeps the flag always current without requiring a trigger or a separate background worker. Admins can also manually flag a complaint via the API if they want to escalate before the threshold.
 
 ### Photo Handling
 
 Photos are streamed directly from the client to Cloudinary via `multer-storage-cloudinary`. The file never lands on the Express server's filesystem — multer pipes the stream straight to Cloudinary's upload API and returns the URL, which is then stored in `complaints.photo_url`. The upload middleware enforces a 5 MB limit and restricts MIME types to `jpg`, `jpeg`, `png`, and `webp` before the stream starts. Images land in a dedicated `SocietyTrack` folder in Cloudinary and are served through Cloudinary's CDN.
+
+### Computed Metrics — `timeInStatus` and `resolutionTime`
+
+Both fields are computed at read time, not stored. `timeInStatus` is derived from the last `StatusHistory.changedAt` timestamp (or `createdAt` if no transitions have occurred yet), subtracted from `Date.now()`. `resolutionTime` is `resolvedAt - createdAt`, returned as null for unresolved complaints. Both are formatted as human-readable strings (`2d 4h`, `14h 30m`) in the controller before they leave the API. The dashboard aggregates `resolutionTime` across all resolved complaints to produce `avgResolutionHours` — this is the metric operations teams use to benchmark response quality. Keeping these computed rather than persisted means there's no sync problem: the value is always accurate relative to the actual timestamps.
 
 ### Notification Flow
 
@@ -105,7 +123,7 @@ Two notification paths run in parallel when an admin updates a complaint's statu
 -- Enums
 CREATE TYPE "Role"     AS ENUM ('RESIDENT', 'ADMIN');
 CREATE TYPE "Category" AS ENUM ('ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER');
-CREATE TYPE "Status"   AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED');
+CREATE TYPE "Status"   AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'REOPENED');
 CREATE TYPE "Priority" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
 
 -- users
@@ -159,7 +177,7 @@ CREATE TABLE app_config (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
--- Seeded row: ('overdue_days', '7')
+-- Seeded rows: ('overdue_days', '7'), ('reopen_window_days', '3')
 ```
 
 </details>
@@ -191,6 +209,9 @@ CREATE TABLE app_config (
 | `DELETE` | `/api/admin/notices/:id` | JWT · Admin | Delete a notice |
 | `GET` | `/api/admin/config/overdue-days` | JWT · Admin | Get current overdue threshold |
 | `PUT` | `/api/admin/config/overdue-days` | JWT · Admin | Update overdue threshold |
+| `GET` | `/api/admin/config/reopen-days`  | JWT · Admin | Get current reopen window |
+| `PUT` | `/api/admin/config/reopen-days`  | JWT · Admin | Update reopen window |
+| `PATCH` | `/api/complaints/:id/reopen`   | JWT · Resident | Reopen a resolved complaint (within window) |
 
 </details>
 
@@ -230,7 +251,7 @@ Prerequisites: Node.js 20+, PostgreSQL 14+, a Cloudinary account, a Gmail accoun
 
    The seed creates:
    - Admin account: `admin@society.com` / `Admin@123`
-   - Default config: `overdue_days = 7`
+   - Default config: `overdue_days = 7`, `reopen_window_days = 3`
 
 5. **Start the backend**
 
@@ -316,7 +337,7 @@ society-maintenance-tracker/
 │       │   ├── auth.controller.js             # Register, login, getMe
 │       │   ├── complaint.controller.js        # Resident complaint CRUD
 │       │   ├── admin.complaint.controller.js  # Admin triage, dashboard, stats
-│       │   ├── config.controller.js           # overdue_days read/write
+│       │   ├── config.controller.js           # overdue_days + reopen_window_days read/write
 │       │   └── notice.controller.js           # Notice CRUD + email broadcast
 │       ├── routes/                # One file per domain, mirrors controllers
 │       ├── middleware/
@@ -349,7 +370,7 @@ society-maintenance-tracker/
                 ├── AllComplaints.jsx      # Filterable complaint table
                 ├── ComplaintManage.jsx    # Status/priority controls + history
                 ├── NoticeManage.jsx       # Post and delete notices
-                └── ConfigPage.jsx        # Update overdue threshold
+                └── ConfigPage.jsx        # Overdue threshold + reopen window settings
 ```
 
 ---

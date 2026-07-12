@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, AlertTriangle, Tag, CalendarClock, CheckCircle2,
-  FileText, ImageIcon, History, ChevronRight,
+  FileText, ImageIcon, History, ChevronRight, Clock, Timer, RotateCcw,
 } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
@@ -16,6 +16,7 @@ const VALID_TRANSITIONS = {
   OPEN:        ['IN_PROGRESS', 'RESOLVED'],
   IN_PROGRESS: ['RESOLVED'],
   RESOLVED:    [],
+  REOPENED:    ['IN_PROGRESS', 'RESOLVED'],
 };
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
@@ -213,6 +214,30 @@ export default function ComplaintManage() {
               <MetaField label="Resolved on" value={new Date(complaint.resolvedAt).toLocaleString()} icon={CheckCircle2} />
             )}
           </motion.div>
+
+          {/* Computed metrics */}
+          {(complaint.timeInStatus || complaint.resolutionTime) && (
+            <motion.div variants={fadeUp} className="flex flex-wrap gap-4">
+              {complaint.timeInStatus && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                  <Clock size={12} strokeWidth={2.25} />
+                  <span>In current status: <span className="font-semibold">{complaint.timeInStatus}</span></span>
+                </div>
+              )}
+              {complaint.resolutionTime && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-700">
+                  <Timer size={12} strokeWidth={2.25} />
+                  <span>Resolved in: <span className="font-semibold">{complaint.resolutionTime}</span></span>
+                </div>
+              )}
+              {complaint.status === 'REOPENED' && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2 text-xs text-purple-700">
+                  <RotateCcw size={12} strokeWidth={2.25} />
+                  <span>Resident-reopened — needs attention</span>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           <motion.div variants={fadeUp}>
             <div className="flex items-center gap-2 mb-2">

@@ -71,19 +71,28 @@ export default function AdminDashboard() {
         {/* Overview */}
         <div className="mb-8">
           <h2 className="text-xs font-bold text-neutral uppercase tracking-widest mb-4">Overview</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard label="Total Complaints" value={loading ? null : data.total}  icon="📝" />
-            <StatCard label="Overdue"           value={loading ? null : data.overdue} highlight icon="⚠️" />
+          <div className="grid grid-cols-1 gap-4">
+            <StatCard label="Total Complaints" value={loading ? null : data?.total} icon="📝" />
           </div>
         </div>
 
         {/* By Status */}
         <div className="mb-8">
           <h2 className="text-xs font-bold text-neutral uppercase tracking-widest mb-4">By Status</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard label="Open"        value={loading ? null : data?.byStatus?.OPEN}        icon="🔵" />
             <StatCard label="In Progress" value={loading ? null : data?.byStatus?.IN_PROGRESS} icon="🟡" />
             <StatCard label="Resolved"    value={loading ? null : data?.byStatus?.RESOLVED}    icon="✅" />
+            <StatCard label="Reopened"    value={loading ? null : data?.byStatus?.REOPENED}    icon="🔄" />
+          </div>
+        </div>
+
+        {/* Resolution metric */}
+        <div className="mb-8">
+          <h2 className="text-xs font-bold text-neutral uppercase tracking-widest mb-4">Resolution Performance</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <StatCard label="Overdue"                 value={loading ? null : data?.overdue}              highlight icon="⚠️" />
+            <StatCard label="Avg Resolution Time (h)" value={loading ? null : (data?.avgResolutionHours ?? '—')} icon="⏱️" />
           </div>
         </div>
 
