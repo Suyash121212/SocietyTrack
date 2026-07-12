@@ -20,7 +20,6 @@ const VALID_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 const timeInStatus = (complaint) => {
   const now = Date.now();
   if (!complaint.statusHistory?.length) {
-    // No transitions yet — been in OPEN since creation
     return now - new Date(complaint.createdAt).getTime();
   }
   const last = complaint.statusHistory.at(-1);
@@ -42,6 +41,31 @@ const formatMs = (ms) => {
   if (days > 0)  return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+};
+
+/**
+ * Urgency score — higher = needs attention sooner.
+ * Used to sort the admin queue instead of a flat isOverdue DESC.
+ *
+ * Score components:
+ *   isOverdue:   +40   (already blown the SLA)
+ *   REOPENED:    +20   (resident rejected the resolution)
+ *   priority:    HIGH=15 / MEDIUM=8 / LOW=3 / null=0
+ *   age (days):  +1 per day, capped at 20
+ *   status:      OPEN=5 / IN_PROGRESS=2 / REOPENED=0 (already counted above)
+ */
+const PRIORITY_SCORE = { HIGH: 15, MEDIUM: 8, LOW: 3 };
+const STATUS_SCORE   = { OPEN: 5, IN_PROGRESS: 2, RESOLVED: 0, REOPENED: 0 };
+
+const urgencyScore = (complaint) => {
+  let score = 0;
+  if (complaint.isOverdue)             score += 40;
+  if (complaint.status === 'REOPENED') score += 20;
+  score += PRIORITY_SCORE[complaint.priority] ?? 0;
+  score += STATUS_SCORE[complaint.status]     ?? 0;
+  const ageDays = (Date.now() - new Date(complaint.createdAt).getTime()) / 86_400_000;
+  score += Math.min(Math.floor(ageDays), 20);
+  return score;
 };
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
@@ -85,28 +109,35 @@ export const getAllComplaints = async (req, res) => {
 
     const complaints = await prisma.complaint.findMany({
       where,
-      orderBy: [{ isOverdue: 'desc' }, { createdAt: 'desc' }],
+      // Fetch all then sort by urgency score in JS — a composite score
+      // can't be expressed as a simple Prisma orderBy without a raw query
       include: {
         user: { select: { flatNo: true } },
         statusHistory: { orderBy: { changedAt: 'asc' }, select: { changedAt: true } },
       },
     });
 
-    return res.status(200).json(
-      complaints.map((c) => ({
-        id:             c.id,
-        flatNo:         c.user.flatNo,
-        category:       c.category,
-        status:         c.status,
-        priority:       c.priority,
-        isOverdue:      c.isOverdue,
-        createdAt:      c.createdAt,
-        resolvedAt:     c.resolvedAt,
-        // Computed metrics
-        timeInStatus:   formatMs(timeInStatus(c)),
-        resolutionTime: formatMs(resolutionTime(c)),
-      }))
+    const shaped = complaints.map((c) => ({
+      id:             c.id,
+      flatNo:         c.user.flatNo,
+      category:       c.category,
+      status:         c.status,
+      priority:       c.priority,
+      isOverdue:      c.isOverdue,
+      createdAt:      c.createdAt,
+      resolvedAt:     c.resolvedAt,
+      urgencyScore:   urgencyScore(c),
+      timeInStatus:   formatMs(timeInStatus(c)),
+      resolutionTime: formatMs(resolutionTime(c)),
+    }));
+
+    // Sort highest urgency first; stable secondary sort by createdAt desc
+    shaped.sort((a, b) =>
+      b.urgencyScore - a.urgencyScore ||
+      new Date(b.createdAt) - new Date(a.createdAt)
     );
+
+    return res.status(200).json(shaped);
   } catch (error) {
     console.error('Error fetching complaints:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
@@ -261,4 +292,106 @@ export const getDashboard = async (_req, res) => {
   for (const row of byCategoryRaw) byCategory[row.category] = row._count.id;
 
   return res.status(200).json({ total, byStatus, byCategory, overdue, avgResolutionHours });
+};
+
+/**
+ * Recurring issues — flat+category pairs with ≥2 complaints in the last 60 days.
+ * Sorted by count DESC so the worst offenders surface first.
+ * "Which issues keep coming back?" — this is the direct answer.
+ */
+export const getRecurringIssues = async (_req, res) => {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      u.flat_no                          AS "flatNo",
+      c.category                         AS "category",
+      COUNT(*)::int                      AS "count",
+      MAX(c.created_at)                  AS "lastSeen"
+    FROM complaints c
+    JOIN users u ON u.id = c.user_id
+    WHERE
+      c.created_at >= NOW() - INTERVAL '60 days'
+      AND u.flat_no IS NOT NULL
+    GROUP BY u.flat_no, c.category
+    HAVING COUNT(*) >= 2
+    ORDER BY COUNT(*) DESC, MAX(c.created_at) DESC
+    LIMIT 10
+  `;
+
+  return res.status(200).json(rows);
+};
+
+/**
+ * Average resolution time per category — the metric real maintenance ops teams track.
+ * Only counts complaints that have actually been resolved.
+ */
+export const getResolutionByCategory = async (_req, res) => {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      category,
+      COUNT(*)::int                                                     AS "resolvedCount",
+      ROUND(
+        AVG(
+          EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
+        )::numeric,
+        1
+      )::float                                                          AS "avgHours"
+    FROM complaints
+    WHERE
+      status    = 'RESOLVED'
+      AND resolved_at IS NOT NULL
+    GROUP BY category
+    ORDER BY "avgHours" ASC
+  `;
+
+  return res.status(200).json(rows);
+};
+
+/**
+ * Weekly trend — complaints raised + average resolution hours per week.
+ * Feeds the dual-axis chart on the dashboard so volume and velocity
+ * are visible together, not in separate disconnected cards.
+ */
+export const getWeeklyTrend = async (_req, res) => {
+  const rows = await prisma.$queryRaw`
+    SELECT
+      DATE_TRUNC('week', created_at)                                    AS week_start,
+      COUNT(*)::int                                                     AS complaints,
+      ROUND(
+        AVG(
+          CASE
+            WHEN resolved_at IS NOT NULL
+            THEN EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
+          END
+        )::numeric,
+        1
+      )::float                                                          AS "avgResolutionHours"
+    FROM complaints
+    WHERE created_at >= NOW() - INTERVAL '6 weeks'
+    GROUP BY week_start
+    ORDER BY week_start ASC
+  `;
+
+  const now = new Date();
+  const weeks = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (5 - i) * 7);
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  });
+
+  const result = weeks.map((weekStart) => {
+    const label = weekStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const match = rows.find(
+      (r) => new Date(r.week_start).toDateString() === weekStart.toDateString(),
+    );
+    return {
+      week:               label,
+      complaints:         match?.complaints         ?? 0,
+      avgResolutionHours: match?.avgResolutionHours ?? null,
+    };
+  });
+
+  return res.status(200).json(result);
 };

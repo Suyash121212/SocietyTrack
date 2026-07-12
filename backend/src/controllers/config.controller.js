@@ -60,3 +60,51 @@ export const updateReopenDays = async (req, res) => {
   await setConfigInt('reopen_window_days', parsed);
   return res.status(200).json({ value: parsed });
 };
+
+// ─── SLA Policies ─────────────────────────────────────────────────────────────
+
+export const getSlaMatrix = async (_req, res) => {
+  const policies = await prisma.slaPolicy.findMany({
+    orderBy: [{ category: 'asc' }, { priority: 'asc' }],
+  });
+  return res.status(200).json(policies);
+};
+
+export const upsertSlaPolicy = async (req, res) => {
+  const { category, priority, thresholdDays } = req.body;
+
+  const VALID_CATEGORIES = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
+  const VALID_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
+
+  if (!category || !VALID_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `category must be one of: ${VALID_CATEGORIES.join(', ')}` });
+  }
+
+  if (priority !== null && priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
+    return res.status(400).json({ error: `priority must be one of: ${VALID_PRIORITIES.join(', ')} or null` });
+  }
+
+  const days = validatePositiveInt(thresholdDays);
+  if (!days) {
+    return res.status(400).json({ error: 'thresholdDays must be a positive integer' });
+  }
+
+  const normalizedPriority = priority ?? null;
+
+  let policy;
+  if (normalizedPriority === null) {
+    // Can't upsert on nullable unique in Prisma — delete-then-create
+    await prisma.slaPolicy.deleteMany({ where: { category, priority: null } });
+    policy = await prisma.slaPolicy.create({
+      data: { category, priority: null, thresholdDays: days },
+    });
+  } else {
+    policy = await prisma.slaPolicy.upsert({
+      where:  { category_priority: { category, priority: normalizedPriority } },
+      update: { thresholdDays: days },
+      create: { category, priority: normalizedPriority, thresholdDays: days },
+    });
+  }
+
+  return res.status(200).json(policy);
+};

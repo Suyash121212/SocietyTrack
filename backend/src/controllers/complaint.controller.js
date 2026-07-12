@@ -1,22 +1,21 @@
 import { prisma } from '../db/prisma.js';
 import { sendStatusChangeEmail } from '../services/email.service.js';
 import { getIO } from '../socket.js';
+import { getThumbnailUrl } from '../middleware/upload.middleware.js';
 
 const VALID_CATEGORIES = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
+const MAX_PHOTOS = 3;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** ms a complaint has spent in its current status */
 const timeInStatusMs = (complaint) => {
   const now = Date.now();
   if (!complaint.statusHistory?.length) {
     return now - new Date(complaint.createdAt).getTime();
   }
-  const last = complaint.statusHistory.at(-1);
-  return now - new Date(last.changedAt).getTime();
+  return now - new Date(complaint.statusHistory.at(-1).changedAt).getTime();
 };
 
-/** ms between creation and first resolution, or null */
 const resolutionTimeMs = (complaint) => {
   if (!complaint.resolvedAt) return null;
   return new Date(complaint.resolvedAt).getTime() - new Date(complaint.createdAt).getTime();
@@ -46,23 +45,35 @@ export const createComplaint = async (req, res) => {
     return res.status(400).json({ error: `category must be one of: ${VALID_CATEGORIES.join(', ')}` });
   }
 
-  const photoUrl = req.file?.path ?? null;
+  const files = req.files ?? [];
+
+  if (files.length > MAX_PHOTOS) {
+    return res.status(400).json({ error: `Maximum ${MAX_PHOTOS} photos allowed` });
+  }
 
   const complaint = await prisma.complaint.create({
     data: {
       userId:    req.user.id,
       category,
       description,
-      photoUrl,
       status:    'OPEN',
       isOverdue: false,
       priority:  null,
+      // Create all photo rows in the same transaction
+      photos: files.length > 0 ? {
+        create: files.map((file, i) => ({
+          url:          file.secure_url || file.path,
+          thumbnailUrl: getThumbnailUrl(file),
+          position:     i,
+        })),
+      } : undefined,
     },
     select: {
       id:        true,
       category:  true,
       status:    true,
       createdAt: true,
+      photos: { select: { id: true, url: true, thumbnailUrl: true, position: true } },
     },
   });
 
@@ -72,7 +83,6 @@ export const createComplaint = async (req, res) => {
 export const getMyComplaints = async (req, res) => {
   const now = Date.now();
 
-  // Fetch reopen window for canReopen computation
   const config = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
   const reopenWindowMs = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
 
@@ -81,11 +91,11 @@ export const getMyComplaints = async (req, res) => {
     orderBy: { createdAt: 'desc' },
     include: {
       statusHistory: { orderBy: { changedAt: 'asc' }, select: { changedAt: true } },
+      photos: { orderBy: { position: 'asc' }, select: { thumbnailUrl: true, url: true } },
     },
   });
 
-  const result = complaints.map((c) => {
-    // canReopen: only when RESOLVED and within the configured window
+  return res.status(200).json(complaints.map((c) => {
     const canReopen =
       c.status === 'RESOLVED' &&
       c.resolvedAt !== null &&
@@ -101,12 +111,12 @@ export const getMyComplaints = async (req, res) => {
       createdAt:      c.createdAt,
       resolvedAt:     c.resolvedAt,
       canReopen,
+      // Return first thumbnail for list-view previews
+      thumbnailUrl:   c.photos[0]?.thumbnailUrl ?? null,
       timeInStatus:   formatMs(timeInStatusMs(c)),
       resolutionTime: formatMs(resolutionTimeMs(c)),
     };
-  });
-
-  return res.status(200).json(result);
+  }));
 };
 
 export const getComplaintById = async (req, res) => {
@@ -119,6 +129,7 @@ export const getComplaintById = async (req, res) => {
         orderBy: { changedAt: 'asc' },
         include: { admin: { select: { name: true } } },
       },
+      photos: { orderBy: { position: 'asc' } },
     },
   });
 
@@ -126,12 +137,10 @@ export const getComplaintById = async (req, res) => {
     return res.status(404).json({ error: 'Complaint not found' });
   }
 
-  // Residents can only view their own complaints
   if (req.user.role === 'RESIDENT' && complaint.userId !== req.user.id) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  // Compute canReopen for the resident
   let canReopen = false;
   if (req.user.role === 'RESIDENT' && complaint.status === 'RESOLVED' && complaint.resolvedAt) {
     const config = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
@@ -142,7 +151,7 @@ export const getComplaintById = async (req, res) => {
   const statusHistory = complaint.statusHistory.map((h) => ({
     oldStatus: h.oldStatus,
     newStatus: h.newStatus,
-    changedBy: h.admin.name,
+    changedBy: h.admin?.name ?? 'System',
     note:      h.note,
     changedAt: h.changedAt,
   }));
@@ -150,7 +159,6 @@ export const getComplaintById = async (req, res) => {
   return res.status(200).json({
     id:             complaint.id,
     description:    complaint.description,
-    photoUrl:       complaint.photoUrl,
     category:       complaint.category,
     status:         complaint.status,
     priority:       complaint.priority,
@@ -158,6 +166,13 @@ export const getComplaintById = async (req, res) => {
     createdAt:      complaint.createdAt,
     resolvedAt:     complaint.resolvedAt,
     canReopen,
+    // Normalized photo array — full URL for detail view, thumbnail pre-generated
+    photos:         complaint.photos.map((p) => ({
+      id:           p.id,
+      url:          p.url,
+      thumbnailUrl: p.thumbnailUrl,
+      position:     p.position,
+    })),
     timeInStatus:   formatMs(timeInStatusMs(complaint)),
     resolutionTime: formatMs(resolutionTimeMs(complaint)),
     statusHistory,
@@ -174,7 +189,6 @@ export const reopenComplaint = async (req, res) => {
 
   if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
-  // Only the resident who owns this complaint may reopen it
   if (complaint.userId !== req.user.id) {
     return res.status(403).json({ error: 'Access denied' });
   }
@@ -187,10 +201,9 @@ export const reopenComplaint = async (req, res) => {
     return res.status(400).json({ error: 'Complaint has no resolved timestamp' });
   }
 
-  // Enforce configurable reopen window
-  const config = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
-  const windowMs = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
-  const age = Date.now() - new Date(complaint.resolvedAt).getTime();
+  const config    = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
+  const windowMs  = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
+  const age       = Date.now() - new Date(complaint.resolvedAt).getTime();
 
   if (age > windowMs) {
     const windowDays = config ? parseInt(config.value, 10) : 3;
@@ -201,13 +214,9 @@ export const reopenComplaint = async (req, res) => {
 
   const updated = await prisma.complaint.update({
     where: { id },
-    data: {
-      status:     'REOPENED',
-      resolvedAt: null,   // clear resolution timestamp — it's active again
-    },
+    data: { status: 'REOPENED', resolvedAt: null },
   });
 
-  // Record the transition under the resident's own ID
   await prisma.statusHistory.create({
     data: {
       complaintId: id,
@@ -218,7 +227,6 @@ export const reopenComplaint = async (req, res) => {
     },
   });
 
-  // Notify via socket so admin sees it live
   getIO().to(`complaint:${id}`).emit('status-updated', {
     complaintId: id,
     oldStatus:   'RESOLVED',
@@ -227,7 +235,6 @@ export const reopenComplaint = async (req, res) => {
     changedAt:   new Date().toISOString(),
   });
 
-  // Email the resident confirming their reopen
   sendStatusChangeEmail(
     complaint.user.email,
     complaint.id,

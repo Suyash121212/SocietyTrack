@@ -42,6 +42,63 @@ async function main() {
     create: { key: 'reopen_window_days', value: '3' },
   });
   console.log('[Seed] AppConfig: reopen_window_days = 3');
+
+  // ── SLA Policy matrix ──────────────────────────────────────────────────────
+  // category + priority → threshold_days
+  // null priority = "any priority not covered by a more specific row"
+  // These reflect realistic ops priorities: electrical/security issues resolve faster.
+  const slaPolicies = [
+    // ELECTRICAL
+    { category: 'ELECTRICAL', priority: 'HIGH',   thresholdDays: 1 },
+    { category: 'ELECTRICAL', priority: 'MEDIUM', thresholdDays: 3 },
+    { category: 'ELECTRICAL', priority: 'LOW',    thresholdDays: 5 },
+    { category: 'ELECTRICAL', priority: null,      thresholdDays: 3 },
+
+    // PLUMBING
+    { category: 'PLUMBING',   priority: 'HIGH',   thresholdDays: 2 },
+    { category: 'PLUMBING',   priority: 'MEDIUM', thresholdDays: 5 },
+    { category: 'PLUMBING',   priority: 'LOW',    thresholdDays: 7 },
+    { category: 'PLUMBING',   priority: null,      thresholdDays: 5 },
+
+    // SECURITY
+    { category: 'SECURITY',   priority: 'HIGH',   thresholdDays: 1 },
+    { category: 'SECURITY',   priority: 'MEDIUM', thresholdDays: 2 },
+    { category: 'SECURITY',   priority: 'LOW',    thresholdDays: 4 },
+    { category: 'SECURITY',   priority: null,      thresholdDays: 2 },
+
+    // CLEANING
+    { category: 'CLEANING',   priority: 'HIGH',   thresholdDays: 3 },
+    { category: 'CLEANING',   priority: 'MEDIUM', thresholdDays: 7 },
+    { category: 'CLEANING',   priority: 'LOW',    thresholdDays: 10 },
+    { category: 'CLEANING',   priority: null,      thresholdDays: 7 },
+
+    // OTHER
+    { category: 'OTHER',      priority: 'HIGH',   thresholdDays: 3 },
+    { category: 'OTHER',      priority: 'MEDIUM', thresholdDays: 7 },
+    { category: 'OTHER',      priority: 'LOW',    thresholdDays: 14 },
+    { category: 'OTHER',      priority: null,      thresholdDays: 7 },
+  ];
+
+  // Prisma can't upsert on a nullable composite unique — split into two passes.
+  // Pass 1: non-null priority rows (standard upsert)
+  for (const p of slaPolicies.filter((p) => p.priority !== null)) {
+    await prisma.slaPolicy.upsert({
+      where:  { category_priority: { category: p.category, priority: p.priority } },
+      update: { thresholdDays: p.thresholdDays },
+      create: p,
+    });
+  }
+
+  // Pass 2: null-priority (category default) rows — delete-then-create is
+  // the only reliable pattern for nullable unique fields in Prisma.
+  for (const p of slaPolicies.filter((p) => p.priority === null)) {
+    await prisma.slaPolicy.deleteMany({
+      where: { category: p.category, priority: null },
+    });
+    await prisma.slaPolicy.create({ data: p });
+  }
+
+  console.log(`[Seed] SLA policies: ${slaPolicies.length} rows upserted`);
 }
 
 main()
