@@ -1,6 +1,5 @@
 # SocietyTrack — System Design
 
-> Architecture, data flows, reliability guarantees, and scalability notes across the five core subsystems. All diagrams below are embedded as Mermaid and render natively on GitHub — no external tool or image export required.
 
 ---
 
@@ -269,8 +268,3 @@ flowchart TD
     I --> C
 ```
 
----
-
-## A Note on Diagram Tooling
-
-Every diagram above is Mermaid, embedded directly in this file — GitHub renders it natively the moment the file is viewed, no export or separate image folder needed. If a polished, presentation-ready version of the architecture or ER diagram is ever needed for a slide deck, [dbdiagram.io](https://dbdiagram.io) (paste the schema, export PNG/SVG) or [draw.io](https://draw.io) remain good options for that specific use case — but for the repo itself, keeping diagrams as text alongside the code they describe is the more maintainable choice.
