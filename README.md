@@ -1,285 +1,163 @@
 # SocietyTrack
 
-**Residential maintenance management — complaints, notices, and overdue tracking in one place.**
+**Residential maintenance management — complaints, notices, SLA tracking, and reporting in one place.**
 
 ![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?logo=node.js&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Deployed on Render](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=black)
-![Deployed on Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?logo=vercel&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-7.8-2D3748?logo=prisma&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-Upstash-DC382D?logo=redis&logoColor=white)
+![Render](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=black)
+![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?logo=vercel&logoColor=white)
 
-**Live demo:** [https://society-track.vercel.app](https://society-track.vercel.app) · API: [https://society-track-api.onrender.com](https://society-track-api.onrender.com)
+**Live demo:** [https://society-track.vercel.app](https://society-track.vercel.app)  
+**API:** [https://society-track-api.onrender.com](https://society-track-api.onrender.com)
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [System Design](#system-design)
-- [Database Schema](#database-schema)
-- [API Reference](#api-reference)
-- [Local Setup](#local-setup)
-- [Environment Variables](#environment-variables)
-- [Project Structure](#project-structure)
-- [Deployment](#deployment)
-- [What I'd Add With More Time](#what-id-add-with-more-time)
-- [Author](#author)
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Tech Stack](#tech-stack)
+4. [Local Setup](#local-setup)
+5. [Environment Variables](#environment-variables)
+6. [Database Schema](#database-schema)
+7. [API Reference](#api-reference)
+8. [System Design](#system-design)
+9. [Project Structure](#project-structure)
+10. [Deployment](#deployment)
+11. [Author](#author)
 
 ---
 
 ## Overview
 
-Housing societies run maintenance on WhatsApp threads and paper registers — complaints get lost, nobody knows what's been resolved, and residents have no visibility. SocietyTrack replaces that with a structured complaint lifecycle: residents raise issues, admins triage and update status, and both sides get notified in real time.
+Housing societies manage maintenance through WhatsApp threads and paper registers — complaints get lost, residents have no visibility, and nothing is accountable. SocietyTrack replaces that with a structured complaint lifecycle backed by a relational database, SLA enforcement, and real-time updates.
 
-PostgreSQL was chosen over MongoDB because the data is inherently relational — complaints belong to users, status history belongs to complaints and admins, and the dashboard aggregations (`GROUP BY status`, `GROUP BY category`) are SQL-native operations that would require the aggregation pipeline in Mongo. The schema is fixed and well-defined, so a document store adds no value here.
+**Why PostgreSQL over MongoDB:** The data is inherently relational — complaints belong to users, status history belongs to complaints and admins, and dashboard aggregations (`GROUP BY status`, `GROUP BY category`, `DATE_TRUNC` weekly charts) are SQL-native operations. The schema is fixed and well-defined, so a document store adds no value.
 
 ---
 
 ## Features
 
-| Resident | Admin |
+### Resident
+
+| Feature | Detail |
 |---|---|
-| ✅ Register and log in | ✅ Separate admin login (seeded) |
-| ✅ Raise complaints with category, description, and optional photo | ✅ Dashboard with totals by status, category, and overdue count |
-| ✅ View complaint history and current status | ✅ Weekly complaints bar chart (last 6 weeks) |
-| ✅ Real-time status updates via WebSocket | ✅ Filter and search all complaints |
-| ✅ Full status change history per complaint | ✅ Update complaint status with state-machine validation |
-| ✅ Email notification on every status change | ✅ Assign priority (Low / Medium / High) |
-| ✅ Notice board for society announcements | ✅ Manually flag a complaint as overdue |
-| ✅ Reopen resolved complaints within configurable window | ✅ Post and delete notices, mark as important |
-| | ✅ Email all residents on important notices |
-| | ✅ Configure overdue threshold and reopen window (days) |
-| | ✅ Dashboard: avg resolution time + Reopened count |
+| Register & login | JWT-based auth with flat number |
+| Raise complaints | Category picker, description, up to 3 photos |
+| Photo upload | Streamed directly to Cloudinary — never touches the server disk |
+| Track complaints | Paginated list with status/category filter and sort |
+| Real-time updates | Socket.IO pushes status changes without polling |
+| Complaint detail | Full status timeline with actor and notes |
+| Reopen complaints | Within configurable window (default 3 days) after resolution |
+| Notice board | View society announcements, auto-hidden after expiry |
+| Computed metrics | `timeInStatus` and `resolutionTime` shown per complaint |
+
+### Admin
+
+| Feature | Detail |
+|---|---|
+| Dashboard | Stat cards, weekly trend chart, avg resolution time |
+| Recurring issues | Flats with ≥ 2 complaints of same category in 60 days |
+| Resolution by category | Avg hours to resolve, per category |
+| Complaint queue | Cursor-paginated, filterable, sorted by urgency score |
+| Urgency scoring | Composite score: overdue flag + priority + age + status |
+| Status management | State machine: OPEN → IN_PROGRESS → RESOLVED, RESOLVED → REOPENED → IN_PROGRESS |
+| Auto-escalation | Cron bumps priority one level and inserts a `System` audit row on SLA breach |
+| Priority & overdue | Manual override available; cron also handles automatically |
+| SLA policy matrix | Per category × priority threshold (e.g. HIGH Electrical = 1 day) |
+| Notice management | Post, delete, mark important, set expiry |
+| Settings | Overdue threshold, reopen window, full SLA matrix editor |
+| Redis cache | Dashboard aggregations cached 60 s, invalidated on any mutation |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Purpose | Why chosen |
+| Layer | Technology | Version | Purpose |
 |---|---|---|---|
-| Frontend | React 19 + Vite 8 | UI framework | Fast HMR, modern JSX transform, ES modules |
-| Styling | Tailwind CSS 3 | Utility-first CSS | No context switching; design tokens via CSS vars |
-| Animations | Framer Motion | Page and element transitions | Declarative API, minimal bundle cost |
-| Charts | Recharts | Admin dashboard bar chart | Built on D3, composable, responsive out of the box |
-| HTTP client | Axios | API requests | Interceptor support for JWT injection |
-| Real-time | Socket.IO client | Live status updates | Pairs directly with server-side Socket.IO |
-| Backend | Node.js + Express 5 | REST API + WebSocket server | Familiar ecosystem, async-first |
-| ORM | Prisma 7 | Database access | Type-safe queries, schema migrations, seed support |
-| Database | PostgreSQL 16 | Persistent storage | Relational model, ACID, strong aggregate support |
-| Auth | JWT + bcryptjs | Stateless authentication | No session store needed; roles encoded in payload |
-| File uploads | Multer + Cloudinary | Photo storage | Images never hit the server disk; Cloudinary handles CDN |
-| Email | Nodemailer + Gmail | Transactional email | Zero infra cost for low-volume alerts |
-| Scheduler | node-cron | Overdue detection | Lightweight in-process cron; no Redis/queue overhead |
-| Real-time | Socket.IO | Push updates to complaint rooms | Residents subscribe to a complaint room, get instant updates |
-| Linter | oxlint | Frontend linting | 50–100× faster than ESLint |
-
----
-
-## System Design
-
-### Complaint Status History Model
-
-Every status transition creates a `StatusHistory` record linking the complaint, the admin who made the change, the old and new status, and an optional note. This is an append-only audit trail — the complaint row itself only holds the current state, while history is fully reconstructable from `status_history`. Transitions are enforced server-side against an explicit state machine map:
-
-```
-OPEN → IN_PROGRESS | RESOLVED
-IN_PROGRESS → RESOLVED
-RESOLVED → REOPENED  (resident only, within configurable window)
-REOPENED → IN_PROGRESS | RESOLVED
-```
-
-No if-checks, no ad-hoc guards — the map is the single source of truth and any transition not in it is rejected with a clear error message. This prevents partial updates and makes the timeline on the complaint detail page an accurate, ordered record.
-
-### Reopen Flow
-
-When a resident marks a complaint as resolved-but-not-actually-fixed, they can reopen it — but only within a configurable window (default 3 days, stored in `app_config`). After that window closes the API returns a 400 with an explicit message directing them to raise a new complaint. This mirrors how Zendesk and Jira handle ticket reopening: `RESOLVED → REOPENED` is a resident action, not an admin one. Reopening clears `resolvedAt`, writes a `StatusHistory` row under the resident's ID, and pushes a socket event to the complaint room so the admin sees it live. Admins then advance `REOPENED → IN_PROGRESS` or directly to `RESOLVED` again using the same status update endpoint.
-
-### Overdue Detection
-
-A `node-cron` job runs every hour. It reads `overdue_days` from `app_config` (default 7, configurable by admin at runtime), computes a cutoff timestamp, and runs two `updateMany` queries: one to mark unresolved complaints (`OPEN`, `IN_PROGRESS`, `REOPENED`) older than the cutoff as overdue, and one to clear the overdue flag on anything that has since been `RESOLVED`. This approach keeps the flag always current without requiring a trigger or a separate background worker. Admins can also manually flag a complaint via the API if they want to escalate before the threshold.
-
-### Photo Handling
-
-Photos are streamed directly from the client to Cloudinary via `multer-storage-cloudinary`. The file never lands on the Express server's filesystem — multer pipes the stream straight to Cloudinary's upload API and returns the URL, which is then stored in `complaints.photo_url`. The upload middleware enforces a 5 MB limit and restricts MIME types to `jpg`, `jpeg`, `png`, and `webp` before the stream starts. Images land in a dedicated `SocietyTrack` folder in Cloudinary and are served through Cloudinary's CDN.
-
-### Computed Metrics — `timeInStatus` and `resolutionTime`
-
-Both fields are computed at read time, not stored. `timeInStatus` is derived from the last `StatusHistory.changedAt` timestamp (or `createdAt` if no transitions have occurred yet), subtracted from `Date.now()`. `resolutionTime` is `resolvedAt - createdAt`, returned as null for unresolved complaints. Both are formatted as human-readable strings (`2d 4h`, `14h 30m`) in the controller before they leave the API. The dashboard aggregates `resolutionTime` across all resolved complaints to produce `avgResolutionHours` — this is the metric operations teams use to benchmark response quality. Keeping these computed rather than persisted means there's no sync problem: the value is always accurate relative to the actual timestamps.
-
-### Notification Flow
-
-Two notification paths run in parallel when an admin updates a complaint's status. The first is synchronous-from-the-client's-perspective: Socket.IO emits a `status-updated` event to the `complaint:<id>` room, which the resident's complaint detail page is subscribed to. The resident sees the change without polling. The second is email via Nodemailer — the call is fire-and-forget (`.catch` logs the error, the HTTP response doesn't wait for it), so a slow SMTP server doesn't block the API response. For important notices, the same pattern applies: Nodemailer sends individual emails to all registered residents, errors are logged and swallowed per-recipient so one bad address doesn't abort the rest.
-
----
-
-## Database Schema
-
-<details>
-<summary>View all 5 tables</summary>
-
-```sql
--- Enums
-CREATE TYPE "Role"     AS ENUM ('RESIDENT', 'ADMIN');
-CREATE TYPE "Category" AS ENUM ('ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER');
-CREATE TYPE "Status"   AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'REOPENED');
-CREATE TYPE "Priority" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
-
--- users
-CREATE TABLE users (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       TEXT NOT NULL,
-  email      TEXT NOT NULL UNIQUE,
-  password   TEXT NOT NULL,
-  role       "Role"    NOT NULL DEFAULT 'RESIDENT',
-  flat_no    TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- complaints
-CREATE TABLE complaints (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES users(id),
-  category    "Category" NOT NULL,
-  description TEXT NOT NULL,
-  photo_url   TEXT,
-  status      "Status"   NOT NULL DEFAULT 'OPEN',
-  priority    "Priority",
-  is_overdue  BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  resolved_at TIMESTAMPTZ
-);
-
--- status_history  (append-only audit log)
-CREATE TABLE status_history (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  complaint_id UUID NOT NULL REFERENCES complaints(id),
-  changed_by   UUID NOT NULL REFERENCES users(id),
-  old_status   "Status" NOT NULL,
-  new_status   "Status" NOT NULL,
-  note         TEXT,
-  changed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- notices
-CREATE TABLE notices (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  admin_id     UUID NOT NULL REFERENCES users(id),
-  title        TEXT NOT NULL,
-  body         TEXT NOT NULL,
-  is_important BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- app_config  (key-value settings store)
-CREATE TABLE app_config (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
--- Seeded rows: ('overdue_days', '7'), ('reopen_window_days', '3')
-```
-
-</details>
-
----
-
-## API Reference
-
-<details>
-<summary>View all endpoints</summary>
-
-| Method | Route | Auth | Description |
-|---|---|---|---|
-| `GET` | `/api/health` | None | Health check |
-| `POST` | `/api/auth/register` | None | Register a new resident |
-| `POST` | `/api/auth/login` | None | Login, returns JWT |
-| `GET` | `/api/auth/me` | JWT | Get current user profile |
-| `POST` | `/api/complaints` | JWT · Resident | Raise a complaint (multipart/form-data with optional `photo`) |
-| `GET` | `/api/complaints/my` | JWT · Resident | List own complaints |
-| `GET` | `/api/complaints/:id` | JWT | Get single complaint with status history |
-| `GET` | `/api/notices` | JWT | List all notices |
-| `GET` | `/api/admin/dashboard` | JWT · Admin | Totals by status, category, and overdue count |
-| `GET` | `/api/admin/dashboard/weekly` | JWT · Admin | Complaint counts for the last 6 weeks |
-| `GET` | `/api/admin/complaints` | JWT · Admin | All complaints (filter by `status`, `category`, `date_from`, `date_to`, `q`) |
-| `PATCH` | `/api/admin/complaints/:id/status` | JWT · Admin | Update status with optional note |
-| `PATCH` | `/api/admin/complaints/:id/priority` | JWT · Admin | Set priority |
-| `PATCH` | `/api/admin/complaints/:id/overdue` | JWT · Admin | Manually flag as overdue |
-| `POST` | `/api/admin/notices` | JWT · Admin | Create a notice |
-| `DELETE` | `/api/admin/notices/:id` | JWT · Admin | Delete a notice |
-| `GET` | `/api/admin/config/overdue-days` | JWT · Admin | Get current overdue threshold |
-| `PUT` | `/api/admin/config/overdue-days` | JWT · Admin | Update overdue threshold |
-| `GET` | `/api/admin/config/reopen-days`  | JWT · Admin | Get current reopen window |
-| `PUT` | `/api/admin/config/reopen-days`  | JWT · Admin | Update reopen window |
-| `PATCH` | `/api/complaints/:id/reopen`   | JWT · Resident | Reopen a resolved complaint (within window) |
-
-</details>
+| Frontend | React + Vite | 19 / 8 | UI framework |
+| Styling | Tailwind CSS | 3.4 | Utility-first CSS |
+| Animations | Framer Motion | 12 | Page/element transitions |
+| Charts | Recharts | 3 | Dashboard analytics |
+| HTTP client | Axios | 1.18 | API requests + JWT interceptor |
+| Real-time | Socket.IO client | 4.8 | Live complaint updates |
+| Backend | Node.js + Express | 22 / 5 | REST API + WebSocket server |
+| ORM | Prisma | 7.8 | Type-safe queries, migrations, seed |
+| Database | PostgreSQL (Neon) | 16 | Relational data, aggregations |
+| Queue | BullMQ + IORedis | 5.8 / 5.6 | Async email job queue |
+| Redis | Upstash | — | Queue broker + dashboard cache |
+| Auth | JWT + bcryptjs | — | Stateless auth, roles in payload |
+| File upload | Multer + Cloudinary | — | Multi-photo upload, CDN delivery |
+| Email | Nodemailer + Gmail | 9 | Transactional notifications |
+| Scheduler | node-cron | 4.6 | Hourly SLA detection |
+| Rate limiting | express-rate-limit | 7.5 | Brute-force & abuse protection |
+| Linter | oxlint | — | Frontend lint (50–100× faster than ESLint) |
 
 ---
 
 ## Local Setup
 
-Prerequisites: Node.js 20+, PostgreSQL 14+, a Cloudinary account, a Gmail account with an App Password enabled.
+### Prerequisites
 
-1. **Clone the repository**
+- Node.js 20+
+- A [Neon](https://neon.tech) project (or any PostgreSQL 14+)
+- A [Cloudinary](https://cloudinary.com) account
+- A [Gmail](https://gmail.com) account with App Password enabled
+- An [Upstash](https://upstash.com) Redis database
 
-   ```bash
-   git clone https://github.com/<your-username>/society-maintenance-tracker.git
-   cd society-maintenance-tracker
-   ```
+### 1 — Clone
 
-2. **Install backend dependencies**
+```bash
+git clone https://github.com/Suyash121212/society-maintenance-tracker.git
+cd society-maintenance-tracker
+```
 
-   ```bash
-   cd backend
-   npm install
-   ```
+### 2 — Backend setup
 
-3. **Configure backend environment**
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Fill in all values — see Environment Variables section
+```
 
-   ```bash
-   cp .env.example .env
-   # Fill in all values — see Environment Variables section below
-   ```
+### 3 — Run migrations and seed
 
-4. **Run database migrations and seed the admin user**
+```bash
+npx prisma migrate deploy
+node prisma/seed.js
+```
 
-   ```bash
-   npx prisma migrate deploy
-   node prisma/seed.js
-   ```
+Seed creates:
+- **Admin account:** `admin@society.com` / `Admin@123`
+- **Config defaults:** `overdue_days = 7`, `reopen_window_days = 3`
+- **SLA policy matrix:** 20 rows across all category × priority combinations
 
-   The seed creates:
-   - Admin account: `admin@society.com` / `Admin@123`
-   - Default config: `overdue_days = 7`, `reopen_window_days = 3`
+### 4 — Start backend
 
-5. **Start the backend**
+```bash
+npm run dev
+# API + worker running on http://localhost:5000
+```
 
-   ```bash
-   npm run dev
-   # API listening on http://localhost:5000
-   ```
+### 5 — Frontend setup
 
-6. **Install frontend dependencies** (new terminal)
+```bash
+cd ../frontend
+npm install
+cp .env.example .env
+# Set VITE_API_URL=http://localhost:5000/api
+```
 
-   ```bash
-   cd ../frontend
-   npm install
-   ```
+### 6 — Start frontend
 
-7. **Configure frontend environment**
-
-   ```bash
-   cp .env.example .env
-   # Set VITE_API_URL=http://localhost:5000/api
-   ```
-
-8. **Start the frontend**
-
-   ```bash
-   npm run dev
-   # App running on http://localhost:5173
-   ```
+```bash
+npm run dev
+# http://localhost:5173
+```
 
 ---
 
@@ -288,26 +166,33 @@ Prerequisites: Node.js 20+, PostgreSQL 14+, a Cloudinary account, a Gmail accoun
 ### `backend/.env`
 
 ```bash
-# PostgreSQL connection string — from Neon, local Postgres, or any PG host
-DATABASE_URL=postgresql://user:password@localhost:5432/society_tracker
+# ── Database ────────────────────────────────────────────────────────────
+# Neon pooled connection string (or any PostgreSQL host)
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 
-# Secret used to sign JWTs — any long random string
+# ── Auth ────────────────────────────────────────────────────────────────
+# Any long random string — used to sign JWTs
 JWT_SECRET=your_jwt_secret_here
 
-# Cloudinary credentials — from https://console.cloudinary.com
+# ── Cloudinary ──────────────────────────────────────────────────────────
+# From https://console.cloudinary.com
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 
-# Gmail account used as the sender for transactional emails
+# ── Email (Nodemailer via Gmail) ─────────────────────────────────────────
+# The Gmail address used as the sender
 GMAIL_USER=your_gmail@gmail.com
-# App Password generated in Google Account → Security → 2-Step Verification → App passwords
+# App Password: Google Account → Security → 2-Step Verification → App passwords
 GMAIL_APP_PASSWORD=your_gmail_app_password
 
+# ── Redis (BullMQ queue + dashboard cache) ───────────────────────────────
+# Upstash URL — note the double-s (rediss://) for TLS
+REDIS_URL=rediss://default:YOUR_TOKEN@YOUR_HOST.upstash.io:6379
+
+# ── Server ──────────────────────────────────────────────────────────────
 # URL of the frontend — used by Socket.IO CORS config
 FRONTEND_URL=http://localhost:5173
-
-# Port the Express server listens on
 PORT=5000
 ```
 
@@ -320,57 +205,302 @@ VITE_API_URL=http://localhost:5000/api
 
 ---
 
+## Database Schema
+
+<details>
+<summary>View all 7 tables</summary>
+
+```sql
+-- ── Enums ────────────────────────────────────────────────────────────────
+CREATE TYPE "Role"     AS ENUM ('RESIDENT', 'ADMIN');
+CREATE TYPE "Category" AS ENUM ('ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER');
+CREATE TYPE "Status"   AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'REOPENED');
+CREATE TYPE "Priority" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
+
+-- ── users ────────────────────────────────────────────────────────────────
+CREATE TABLE users (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT        NOT NULL,
+  email      TEXT        NOT NULL UNIQUE,
+  password   TEXT        NOT NULL,
+  role       "Role"      NOT NULL DEFAULT 'RESIDENT',
+  flat_no    TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ── complaints ───────────────────────────────────────────────────────────
+CREATE TABLE complaints (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES users(id),
+  category    "Category"  NOT NULL,
+  description TEXT        NOT NULL,
+  status      "Status"    NOT NULL DEFAULT 'OPEN',
+  priority    "Priority",
+  is_overdue  BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+-- ── complaint_photos ─────────────────────────────────────────────────────
+-- Normalized: up to 3 photos per complaint.
+-- thumbnail_url is pre-generated at upload time via Cloudinary eager transform.
+CREATE TABLE complaint_photos (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_id  UUID        NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+  url           TEXT        NOT NULL,  -- full-resolution Cloudinary URL
+  thumbnail_url TEXT        NOT NULL,  -- c_thumb,w_200 variant
+  position      INTEGER     NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ── status_history ───────────────────────────────────────────────────────
+-- Append-only audit log. changed_by = NULL means system auto-escalation.
+CREATE TABLE status_history (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_id UUID        NOT NULL REFERENCES complaints(id),
+  changed_by   UUID        REFERENCES users(id),  -- nullable for system rows
+  old_status   "Status"    NOT NULL,
+  new_status   "Status"    NOT NULL,
+  note         TEXT,
+  changed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ── notices ──────────────────────────────────────────────────────────────
+-- valid_until = NULL means never expires.
+-- Notices past valid_until are filtered out by the API automatically.
+CREATE TABLE notices (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id     UUID        NOT NULL REFERENCES users(id),
+  title        TEXT        NOT NULL,
+  body         TEXT        NOT NULL,
+  is_important BOOLEAN     NOT NULL DEFAULT FALSE,
+  valid_until  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ── app_config ───────────────────────────────────────────────────────────
+-- Key-value store for runtime-configurable settings.
+-- Seeded rows: overdue_days='7', reopen_window_days='3'
+CREATE TABLE app_config (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- ── sla_policies ─────────────────────────────────────────────────────────
+-- category + priority (nullable) → threshold_days.
+-- Lookup order: exact match → category default (priority=NULL) → global overdue_days.
+CREATE TABLE sla_policies (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  category       "Category"  NOT NULL,
+  priority       "Priority",
+  threshold_days INTEGER     NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category, priority)
+);
+```
+
+</details>
+
+---
+
+## API Reference
+
+### Rate Limits
+
+| Tier | Applies to | Limit |
+|---|---|---|
+| Auth | `POST /api/auth/login`, `POST /api/auth/register` | 5 req / 15 min per IP |
+| Mutation | All write endpoints (POST, PATCH, PUT, DELETE) | 30 req / min per IP |
+| General | All `/api/*` | 200 req / min per IP |
+
+All limited responses return HTTP `429` with a `Retry-After` header.
+
+---
+
+<details>
+<summary>View all endpoints</summary>
+
+### Auth
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | None | Health check |
+| `POST` | `/api/auth/register` | None | Register resident, returns user |
+| `POST` | `/api/auth/login` | None | Login, returns JWT + user |
+| `GET` | `/api/auth/me` | JWT | Get current user profile |
+
+### Resident — Complaints
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/complaints` | JWT · Resident | Create complaint (`multipart/form-data`, field `photos[]`, max 3) |
+| `GET` | `/api/complaints/my` | JWT · Resident | Paginated list (`?limit=20&cursor=`) with `canReopen`, `timeInStatus`, `resolutionTime` |
+| `GET` | `/api/complaints/:id` | JWT | Single complaint with photos, status history, computed metrics |
+| `PATCH` | `/api/complaints/:id/reopen` | JWT · Resident | Reopen within `reopen_window_days`; body `{ note? }` |
+
+### Resident — Notices
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/notices` | JWT | All active notices (expired ones filtered automatically) |
+
+### Admin — Dashboard
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/dashboard` | JWT · Admin | Overview counts, avg resolution, status breakdown |
+| `GET` | `/api/admin/dashboard/weekly` | JWT · Admin | Complaints + avg resolution per week (last 6 weeks) |
+| `GET` | `/api/admin/dashboard/recurring` | JWT · Admin | Flats with ≥ 2 same-category complaints in 60 days |
+| `GET` | `/api/admin/dashboard/resolution-by-category` | JWT · Admin | Avg resolution hours per category |
+
+### Admin — Complaints
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/complaints` | JWT · Admin | Cursor-paginated list with urgency score; filters: `status`, `category`, `date_from`, `date_to`, `q` |
+| `PATCH` | `/api/admin/complaints/:id/status` | JWT · Admin | Transition status (state machine validated); body `{ status, note? }` |
+| `PATCH` | `/api/admin/complaints/:id/priority` | JWT · Admin | Set priority `{ priority: LOW\|MEDIUM\|HIGH }` |
+| `PATCH` | `/api/admin/complaints/:id/overdue` | JWT · Admin | Manually flag as overdue |
+
+### Admin — Notices
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/admin/notices` | JWT · Admin | Create notice `{ title, body, isImportant?, validUntil? }` |
+| `DELETE` | `/api/admin/notices/:id` | JWT · Admin | Delete notice |
+
+### Admin — Config
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/config/overdue-days` | JWT · Admin | Get global overdue threshold |
+| `PUT` | `/api/admin/config/overdue-days` | JWT · Admin | Update global overdue threshold `{ value: number }` |
+| `GET` | `/api/admin/config/reopen-days` | JWT · Admin | Get reopen window |
+| `PUT` | `/api/admin/config/reopen-days` | JWT · Admin | Update reopen window `{ value: number }` |
+| `GET` | `/api/admin/config/sla` | JWT · Admin | Full SLA policy matrix |
+| `PUT` | `/api/admin/config/sla` | JWT · Admin | Upsert a policy `{ category, priority?, thresholdDays }` |
+
+</details>
+
+---
+
+## System Design
+
+### Complaint State Machine
+
+Transitions are enforced server-side via an explicit map — no if-checks:
+
+```
+OPEN → IN_PROGRESS | RESOLVED
+IN_PROGRESS → RESOLVED
+RESOLVED → REOPENED          (resident only, within reopen_window_days)
+REOPENED → IN_PROGRESS | RESOLVED
+```
+
+Every transition appends to `status_history`. `changed_by = NULL` marks system-generated rows (auto-escalation). The timeline on the complaint detail page reconstructs the full audit trail from this append-only table.
+
+### SLA & Auto-Escalation
+
+An hourly `node-cron` job resolves each active complaint's threshold from the `sla_policies` table (exact category+priority → category default → global `overdue_days`). On breach it:
+
+1. Sets `is_overdue = true`
+2. Bumps priority one level (`LOW → MEDIUM → HIGH`, stops at `HIGH`)
+3. Inserts a `StatusHistory` row with `changed_by = NULL` and a descriptive note
+
+All writes are batched — `updateMany` per priority bucket + `createMany` for all audit rows — so the cron fires a fixed number of queries regardless of how many complaints breach their SLA simultaneously.
+
+### Urgency Score (admin queue)
+
+```
+score = isOverdue×40 + isReopened×20 + priority(HIGH=15/MEDIUM=8/LOW=3) + status(OPEN=5/IN_PROGRESS=2) + min(ageDays, 20)
+```
+
+Computed in JS per page after the DB fetch. Highest-urgency complaints surface first within each cursor page.
+
+### Photo Handling
+
+`multer-storage-cloudinary` pipes file streams directly to Cloudinary with an `eager` transform (`c_thumb,w_200,h_200`). The thumbnail URL is stored alongside the full URL in `complaint_photos` at upload time — no second API call ever needed to serve thumbnails in list views.
+
+### Email Queue (BullMQ)
+
+Controllers call `enqueueStatusChange()` / `enqueueImportantNotice()` — both are fire-and-forget enqueues into a BullMQ queue backed by Upstash Redis. A `Worker` (same process) processes jobs asynchronously with 3-attempt exponential backoff (5s → 10s → 20s). API response time is fully decoupled from SMTP latency.
+
+### Redis Cache
+
+All four dashboard read endpoints cache their results in Redis for 60 seconds. Any mutation that changes complaint counts (status update, priority change, overdue flag, cron run) calls `invalidateDashboardCache()`, which DELs all four keys immediately. The next dashboard load after any admin action always reflects current data.
+
+### Cursor Pagination
+
+Both list endpoints (`GET /api/complaints/my`, `GET /api/admin/complaints`) use cursor-based pagination on `(createdAt DESC, id DESC)`. The cursor is `base64url(ISO timestamp|UUID)` — a compound key so ties on `createdAt` never skip rows. `take: limit + 1` detects `hasMore` without a separate `COUNT(*)` round-trip.
+
+---
+
 ## Project Structure
 
 ```plaintext
 society-maintenance-tracker/
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma          # All models, enums, and relations
-│   │   ├── seed.js                # Seeds admin user + default config
-│   │   └── migrations/            # Auto-generated migration SQL
+│   │   ├── schema.prisma              # All models, enums, relations
+│   │   ├── seed.js                    # Admin user + config + SLA matrix
+│   │   └── migrations/                # Auto-generated SQL
 │   └── src/
-│       ├── app.js                 # Express app — middleware, routes, error handler
-│       ├── server.js              # HTTP server, Socket.IO init, cron start
-│       ├── socket.js              # Socket.IO setup — complaint rooms
+│       ├── app.js                     # Express app — middleware, rate limits, routes
+│       ├── server.js                  # HTTP server, Socket.IO, cron, email worker
+│       ├── socket.js                  # Socket.IO — complaint rooms
 │       ├── controllers/
-│       │   ├── auth.controller.js             # Register, login, getMe
-│       │   ├── complaint.controller.js        # Resident complaint CRUD
-│       │   ├── admin.complaint.controller.js  # Admin triage, dashboard, stats
-│       │   ├── config.controller.js           # overdue_days + reopen_window_days read/write
-│       │   └── notice.controller.js           # Notice CRUD + email broadcast
-│       ├── routes/                # One file per domain, mirrors controllers
+│       │   ├── auth.controller.js
+│       │   ├── complaint.controller.js      # Resident CRUD + reopen
+│       │   ├── admin.complaint.controller.js # Admin triage, dashboard, urgency score
+│       │   ├── config.controller.js         # overdue_days, reopen_window_days, SLA
+│       │   └── notice.controller.js         # Notice CRUD + email broadcast
+│       ├── routes/                    # One file per domain
 │       ├── middleware/
-│       │   ├── auth.middleware.js     # JWT verification, role guards
-│       │   └── upload.middleware.js   # Multer + Cloudinary stream config
-│       └── services/
-│           ├── email.service.js       # Nodemailer wrappers (status change + notice)
-│           └── overdue.service.js     # node-cron hourly overdue detection job
+│       │   ├── auth.middleware.js     # JWT verify, role guards
+│       │   └── upload.middleware.js   # Multer + Cloudinary eager thumbnails
+│       ├── services/
+│       │   ├── cache.js               # Redis GET/SET/invalidate helpers
+│       │   ├── email.service.js       # Enqueue wrappers (public interface)
+│       │   └── overdue.service.js     # Hourly SLA cron — batched writes
+│       ├── queues/
+│       │   ├── redis.js               # IORedis connection factory (TLS-aware)
+│       │   └── email.queue.js         # BullMQ Queue + enqueue helpers
+│       ├── workers/
+│       │   └── email.worker.js        # BullMQ Worker — Nodemailer SMTP
+│       └── db/
+│           └── prisma.js              # PrismaClient singleton
 │
 └── frontend/
     └── src/
-        ├── App.jsx                    # Route definitions, protected route wrappers
-        ├── api/axios.js               # Axios instance with JWT interceptor
+        ├── App.jsx                    # Routes + ProtectedRoute wrappers
+        ├── api/axios.js               # Axios instance — JWT interceptor + 401 redirect
+        ├── context/AuthContext.jsx    # JWT state, login/logout, isAdmin()
         ├── components/
-        │   ├── Layout.jsx             # Shared nav shell
-        │   ├── ProtectedRoute.jsx     # Auth + role guard wrapper
-        │   ├── NoticeCard.jsx         # Reusable notice display card
-        │   └── Toast.jsx              # Global toast notification component
+        │   ├── Layout.jsx             # Dark sidebar + mobile drawer
+        │   ├── ProtectedRoute.jsx     # Auth + role guard
+        │   ├── StatusBadge.jsx        # OPEN/IN_PROGRESS/RESOLVED/REOPENED
+        │   ├── PriorityBadge.jsx      # LOW/MEDIUM/HIGH
+        │   ├── StatusTimeline.jsx     # Append-only audit timeline
+        │   ├── FilterBar.jsx          # Status/category/date filters
+        │   ├── NoticeCard.jsx         # Notice with expiry + delete confirm
+        │   ├── PostNoticeForm.jsx     # Title/body/expiry/important form
+        │   └── Toast.jsx              # Animated bottom-right notification
         └── pages/
             ├── LandingPage.jsx
             ├── Login.jsx
             ├── Register.jsx
-            ├── resident/
-            │   ├── Dashboard.jsx          # Complaint list + status badges
-            │   ├── RaiseComplaint.jsx     # New complaint form with photo upload
-            │   ├── ComplaintDetail.jsx    # Timeline view + live socket updates
-            │   └── NoticeBoardPage.jsx    # Notice board
-            └── admin/
-                ├── AdminDashboard.jsx     # Stats cards + weekly bar chart
-                ├── AllComplaints.jsx      # Filterable complaint table
-                ├── ComplaintManage.jsx    # Status/priority controls + history
-                ├── NoticeManage.jsx       # Post and delete notices
-                └── ConfigPage.jsx        # Overdue threshold + reopen window settings
+            ├── admin/
+            │   ├── AdminDashboard.jsx   # Stats, charts, recurring issues
+            │   ├── AllComplaints.jsx    # Urgency-sorted paginated table
+            │   ├── ComplaintManage.jsx  # Status/priority controls + timeline
+            │   ├── NoticeManage.jsx     # Post and manage notices
+            │   └── ConfigPage.jsx      # Thresholds + SLA matrix editor
+            └── resident/
+                ├── Dashboard.jsx        # Paginated complaint list
+                ├── RaiseComplaint.jsx   # Multi-photo complaint form
+                ├── ComplaintDetail.jsx  # Live updates + reopen + metrics
+                └── NoticeBoardPage.jsx  # Notice board
 ```
 
 ---
@@ -379,30 +509,34 @@ society-maintenance-tracker/
 
 ### Frontend → Vercel
 
-Connect the repo to Vercel. Set root directory to `frontend`. Set `VITE_API_URL` to your Render API URL in the Vercel environment variables panel. Vercel runs `npm run build` automatically on every push to `main`.
+1. Connect the repo to Vercel, set root directory to `frontend`
+2. Add environment variable: `VITE_API_URL=https://your-render-api.onrender.com/api`
+3. Vercel runs `npm run build` automatically on every push to `main`
 
 ### Backend → Render
 
-Create a new **Web Service** on Render. Set root directory to `backend`, build command to `npm install`, and start command to `node src/server.js`. Add all backend environment variables in the Render dashboard. Render assigns a public HTTPS URL — use this as `VITE_API_URL` in Vercel.
+1. New **Web Service**, root directory `backend`
+2. Build command: `npm install`
+3. Start command: `node src/server.js`
+4. Add all backend environment variables in the Render dashboard
 
 ### Database → Neon
 
-Create a new Neon project and copy the **Session mode** connection string (port 5432) into `DATABASE_URL`. Run `npx prisma migrate deploy` once from your local machine (pointing at the Neon URL) to apply the schema, then run the seed script to create the admin account.
+1. Create a Neon project, copy the **pooled connection string** into `DATABASE_URL`
+2. Run `npx prisma migrate deploy` from your local machine (pointing at Neon)
+3. Run `node prisma/seed.js` to create the admin account and seed defaults
 
----
+### Redis → Upstash
 
-## What I'd Add With More Time
-
-- **Refresh tokens** — current JWTs are 7-day-lived; a refresh token flow would let short-lived access tokens revoke without forcing re-login.
-- **Push notifications** — replacing the email-only path with web push (via the Push API) for instant mobile alerts without an SMTP dependency.
-- **Resident self-service flat management** — residents can currently only update their flat number at registration; an account settings page would fix that.
-- **Role-based email batching** — the important notice email currently sends one `sendMail` call per resident in a loop; this should be replaced with BCC batching or a proper queue (BullMQ + Redis) to avoid Gmail rate limits at scale.
+1. Create a free database at [console.upstash.com](https://console.upstash.com)
+2. Copy the Redis URL (starts with `rediss://`) into `REDIS_URL`
+3. The `redis.js` connection factory auto-enables TLS when it detects the `rediss://` scheme
 
 ---
 
 ## Author
 
-**Suyash Kakade** — Vishwakarma Institute of Information Technology
+**Suyash Kakade** — Vishwakarma Institute of Information Technology  
 [GitHub](https://github.com/Suyash121212) · [LinkedIn](https://linkedin.com/in/suyash-kakade)
 
-
+Built as part of the Unthinkable Solutions fullstack engineering assessment.
