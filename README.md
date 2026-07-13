@@ -387,7 +387,7 @@ All limited responses return HTTP `429` with a `Retry-After` header.
 
 ## System Design
 
-### Complaint State Machine
+For the full engineering writeup covering complaint history model, SLA detection, photo handling, notification flow, performance optimisations, and all four architecture diagrams, see **[SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md)**.
 
 Transitions are enforced server-side via an explicit map — no if-checks:
 
