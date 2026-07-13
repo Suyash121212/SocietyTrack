@@ -3,6 +3,7 @@ import http from 'http';
 import app from './app.js';
 import { initSocket } from './socket.js';
 import { startOverdueCron } from './services/overdue.service.js';
+import { startEmailWorker } from './workers/email.worker.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -13,4 +14,5 @@ initSocket(httpServer);
 httpServer.listen(PORT, () => {
   console.log(`[Server] Running on port ${PORT}`);
   startOverdueCron();
+  startEmailWorker();
 });

@@ -1,16 +1,14 @@
 import { useState } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
 
-const STATUSES   = ['OPEN', 'IN_PROGRESS', 'RESOLVED'];
+const STATUSES   = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'REOPENED'];
 const CATEGORIES = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
 
-// Compact horizontal filter bar for complaint lists
+const fmt = (s) => s.replace('_', ' ').charAt(0) + s.replace('_', ' ').slice(1).toLowerCase();
+
 export default function FilterBar({ onChange }) {
-  const [filters, setFilters] = useState({
-    status: '',
-    category: '',
-    date_from: '',
-    date_to: '',
-  });
+  const EMPTY = { status: '', category: '', date_from: '', date_to: '' };
+  const [filters, setFilters] = useState(EMPTY);
 
   const handleChange = (e) => {
     const updated = { ...filters, [e.target.name]: e.target.value };
@@ -18,59 +16,79 @@ export default function FilterBar({ onChange }) {
     onChange(updated);
   };
 
+  const hasActive = Object.values(filters).some(Boolean);
+
+  const clearAll = () => {
+    setFilters(EMPTY);
+    onChange(EMPTY);
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-      <p className="text-xs font-semibold text-neutral uppercase tracking-widest mb-3">Filters</p>
-      <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+    <div className="card px-4 py-3">
+      <div className="flex items-center gap-2 mb-3">
+        <SlidersHorizontal size={13} className="text-ink-faint" strokeWidth={2} />
+        <span className="text-xs font-semibold text-ink-faint uppercase tracking-widest">Filters</span>
+        {hasActive && (
+          <button
+            onClick={clearAll}
+            className="ml-auto flex items-center gap-1 text-xs text-ink-muted hover:text-brand-600 transition-colors font-medium"
+          >
+            <X size={11} strokeWidth={2.5} />
+            Clear
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2.5 items-end">
+        {/* Status */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold text-ink-faint uppercase tracking-wide">Status</label>
           <select
             name="status"
             value={filters.status}
             onChange={handleChange}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+            className="h-8 rounded-lg border border-surface-200 bg-surface-0 px-3 text-xs text-ink shadow-card focus:outline-none focus:border-brand-400 focus:shadow-input transition-all"
           >
-            <option value="">All</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{s.replace('_', ' ')}</option>
-            ))}
+            <option value="">All statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{fmt(s)}</option>)}
           </select>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+        {/* Category */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold text-ink-faint uppercase tracking-wide">Category</label>
           <select
             name="category"
             value={filters.category}
             onChange={handleChange}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+            className="h-8 rounded-lg border border-surface-200 bg-surface-0 px-3 text-xs text-ink shadow-card focus:outline-none focus:border-brand-400 focus:shadow-input transition-all"
           >
-            <option value="">All</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</option>
-            ))}
+            <option value="">All categories</option>
+            {CATEGORIES.map(c => <option key={c} value={c}>{fmt(c)}</option>)}
           </select>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+        {/* Date from */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold text-ink-faint uppercase tracking-wide">From</label>
           <input
             type="date"
             name="date_from"
             value={filters.date_from}
             onChange={handleChange}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+            className="h-8 rounded-lg border border-surface-200 bg-surface-0 px-3 text-xs text-ink shadow-card focus:outline-none focus:border-brand-400 focus:shadow-input transition-all"
           />
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+        {/* Date to */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold text-ink-faint uppercase tracking-wide">To</label>
           <input
             type="date"
             name="date_to"
             value={filters.date_to}
             onChange={handleChange}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+            className="h-8 rounded-lg border border-surface-200 bg-surface-0 px-3 text-xs text-ink shadow-card focus:outline-none focus:border-brand-400 focus:shadow-input transition-all"
           />
         </div>
       </div>

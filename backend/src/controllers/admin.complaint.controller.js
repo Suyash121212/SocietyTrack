@@ -1,6 +1,11 @@
 import { prisma } from '../db/prisma.js';
 import { sendStatusChangeEmail } from '../services/email.service.js';
 import { getIO } from '../socket.js';
+import {
+  withCache,
+  invalidateDashboardCache,
+  CACHE_KEYS,
+} from '../services/cache.js';
 
 // ─── State machine ────────────────────────────────────────────────────────────
 // REOPENED sits after RESOLVED and feeds back into the active workflow.
@@ -70,54 +75,105 @@ const urgencyScore = (complaint) => {
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 
+// ── Cursor pagination helpers ────────────────────────────────────────────────
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT     = 100;
+
+/**
+ * Encode a cursor from the last row on a page.
+ * Format: base64url(ISO timestamp "|" UUID)
+ * Both fields together form a unique, stable sort key so ties on createdAt
+ * don't cause rows to be skipped or repeated across pages.
+ */
+const encodeCursor = (createdAt, id) =>
+  Buffer.from(`${new Date(createdAt).toISOString()}|${id}`).toString('base64url');
+
+const decodeCursor = (cursor) => {
+  if (!cursor) return null;
+  try {
+    const [iso, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+    const createdAt = new Date(iso);
+    if (isNaN(createdAt.getTime()) || !id) return null;
+    return { createdAt, id };
+  } catch {
+    return null;
+  }
+};
+
 export const getAllComplaints = async (req, res) => {
   try {
-    const { status, category, date_from, date_to, q } = req.query;
+    const { status, category, date_from, date_to, q, cursor, limit: limitParam } = req.query;
 
-    const where = {};
+    const limit  = Math.min(parseInt(limitParam, 10) || DEFAULT_LIMIT, MAX_LIMIT);
+    const parsed = decodeCursor(cursor);
 
-    if (status?.trim())   where.status   = status.trim().toUpperCase();
-    if (category?.trim()) where.category = category.trim().toUpperCase();
+    // ── Build filter conditions ───────────────────────────────────────────────
+    const filterConditions = [];
+
+    if (status?.trim())   filterConditions.push({ status:   status.trim().toUpperCase() });
+    if (category?.trim()) filterConditions.push({ category: category.trim().toUpperCase() });
 
     if (date_from || date_to) {
-      where.createdAt = {};
+      const createdAt = {};
       if (date_from) {
-        const fromDate = new Date(date_from);
-        if (isNaN(fromDate.getTime())) return res.status(400).json({ message: 'Invalid date_from' });
-        where.createdAt.gte = fromDate;
+        const d = new Date(date_from);
+        if (isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid date_from' });
+        createdAt.gte = d;
       }
       if (date_to) {
-        const toDate = new Date(date_to);
-        if (isNaN(toDate.getTime())) return res.status(400).json({ message: 'Invalid date_to' });
-        toDate.setHours(23, 59, 59, 999);
-        where.createdAt.lte = toDate;
+        const d = new Date(date_to);
+        if (isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid date_to' });
+        d.setHours(23, 59, 59, 999);
+        createdAt.lte = d;
       }
+      filterConditions.push({ createdAt });
     }
 
     if (q?.trim()) {
       const search = q.trim();
+      const validCategories = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
       const orConditions = [
         { description: { contains: search, mode: 'insensitive' } },
         { user: { flatNo: { contains: search, mode: 'insensitive' } } },
+        ...(validCategories.includes(search.toUpperCase())
+          ? [{ category: search.toUpperCase() }]
+          : []),
       ];
-      const validCategories = ['ELECTRICAL', 'PLUMBING', 'SECURITY', 'CLEANING', 'OTHER'];
-      if (validCategories.includes(search.toUpperCase())) {
-        orConditions.push({ category: search.toUpperCase() });
-      }
-      where.OR = orConditions;
+      filterConditions.push({ OR: orConditions });
     }
 
-    const complaints = await prisma.complaint.findMany({
+    // ── Cursor condition ──────────────────────────────────────────────────────
+    // Sort: createdAt DESC, id DESC (UUID tie-breaker for same-second inserts).
+    // "After cursor" in descending order:
+    //   rows where createdAt < cursor.createdAt
+    //          OR (createdAt = cursor.createdAt AND id < cursor.id)
+    if (parsed) {
+      filterConditions.push({
+        OR: [
+          { createdAt: { lt: parsed.createdAt } },
+          { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+        ],
+      });
+    }
+
+    const where = filterConditions.length > 0 ? { AND: filterConditions } : {};
+
+    // Fetch limit+1 — the extra row tells us whether another page exists
+    // without a separate COUNT(*) round-trip.
+    const rows = await prisma.complaint.findMany({
       where,
-      // Fetch all then sort by urgency score in JS — a composite score
-      // can't be expressed as a simple Prisma orderBy without a raw query
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take:    limit + 1,
       include: {
-        user: { select: { flatNo: true } },
+        user:          { select: { flatNo: true } },
         statusHistory: { orderBy: { changedAt: 'asc' }, select: { changedAt: true } },
       },
     });
 
-    const shaped = complaints.map((c) => ({
+    const hasMore = rows.length > limit;
+    const page    = hasMore ? rows.slice(0, limit) : rows;
+
+    const shaped = page.map((c) => ({
       id:             c.id,
       flatNo:         c.user.flatNo,
       category:       c.category,
@@ -131,13 +187,17 @@ export const getAllComplaints = async (req, res) => {
       resolutionTime: formatMs(resolutionTime(c)),
     }));
 
-    // Sort highest urgency first; stable secondary sort by createdAt desc
+    // Urgency sort within each page — DB gives us a stable cursor-ordered
+    // set; urgency re-orders within that set so the hottest items surface first.
     shaped.sort((a, b) =>
       b.urgencyScore - a.urgencyScore ||
       new Date(b.createdAt) - new Date(a.createdAt)
     );
 
-    return res.status(200).json(shaped);
+    const last       = page.at(-1);
+    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+
+    return res.status(200).json({ data: shaped, nextCursor, hasMore });
   } catch (error) {
     console.error('Error fetching complaints:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
@@ -166,7 +226,6 @@ export const updateStatus = async (req, res) => {
     where: { id },
     data: {
       status:     newStatus,
-      // Clear resolvedAt if reopened; set it when resolving
       resolvedAt: newStatus === 'RESOLVED'  ? new Date()
                 : newStatus === 'REOPENED'  ? null
                 : undefined,
@@ -182,6 +241,10 @@ export const updateStatus = async (req, res) => {
       note:        note ?? null,
     },
   });
+
+  // Status change affects counts — bust the cache so the next dashboard
+  // load reflects reality instead of serving stale numbers.
+  invalidateDashboardCache();
 
   sendStatusChangeEmail(
     complaint.user.email,
@@ -216,6 +279,10 @@ export const updatePriority = async (req, res) => {
   if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
   const updated = await prisma.complaint.update({ where: { id }, data: { priority } });
+
+  // Priority change affects urgency scores on the dashboard
+  invalidateDashboardCache();
+
   return res.status(200).json(updated);
 };
 
@@ -225,12 +292,15 @@ export const setOverdue = async (req, res) => {
   const complaint = await prisma.complaint.findUnique({ where: { id } });
   if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
-  // RESOLVED is the only terminal state where overdue makes no sense
   if (complaint.status === 'RESOLVED') {
     return res.status(400).json({ error: 'Resolved complaints cannot be flagged as overdue' });
   }
 
   const updated = await prisma.complaint.update({ where: { id }, data: { isOverdue: true } });
+
+  // Overdue count on dashboard changes
+  invalidateDashboardCache();
+
   return res.status(200).json(updated);
 };
 
@@ -265,132 +335,136 @@ export const getWeeklyStats = async (_req, res) => {
 };
 
 export const getDashboard = async (_req, res) => {
-  const total         = await prisma.complaint.count();
-  const byStatusRaw   = await prisma.complaint.groupBy({ by: ['status'],   _count: { id: true } });
-  const byCategoryRaw = await prisma.complaint.groupBy({ by: ['category'], _count: { id: true } });
-  const overdue       = await prisma.complaint.count({ where: { isOverdue: true } });
+  const result = await withCache(CACHE_KEYS.OVERVIEW, async () => {
+    const total         = await prisma.complaint.count();
+    const byStatusRaw   = await prisma.complaint.groupBy({ by: ['status'],   _count: { id: true } });
+    const byCategoryRaw = await prisma.complaint.groupBy({ by: ['category'], _count: { id: true } });
+    const overdue       = await prisma.complaint.count({ where: { isOverdue: true } });
 
-  // Avg resolution time across all resolved complaints (in hours, rounded)
-  const resolvedComplaints = await prisma.complaint.findMany({
-    where: { status: 'RESOLVED', resolvedAt: { not: null } },
-    select: { createdAt: true, resolvedAt: true },
+    const resolvedComplaints = await prisma.complaint.findMany({
+      where:  { status: 'RESOLVED', resolvedAt: { not: null } },
+      select: { createdAt: true, resolvedAt: true },
+    });
+
+    let avgResolutionHours = null;
+    if (resolvedComplaints.length > 0) {
+      const totalMs = resolvedComplaints.reduce(
+        (sum, c) => sum + (new Date(c.resolvedAt).getTime() - new Date(c.createdAt).getTime()),
+        0,
+      );
+      avgResolutionHours = Math.round(totalMs / resolvedComplaints.length / 3_600_000);
+    }
+
+    const byStatus = { OPEN: 0, IN_PROGRESS: 0, RESOLVED: 0, REOPENED: 0 };
+    for (const row of byStatusRaw) byStatus[row.status] = row._count.id;
+
+    const byCategory = { ELECTRICAL: 0, PLUMBING: 0, SECURITY: 0, CLEANING: 0, OTHER: 0 };
+    for (const row of byCategoryRaw) byCategory[row.category] = row._count.id;
+
+    return { total, byStatus, byCategory, overdue, avgResolutionHours };
   });
 
-  let avgResolutionHours = null;
-  if (resolvedComplaints.length > 0) {
-    const totalMs = resolvedComplaints.reduce(
-      (sum, c) => sum + (new Date(c.resolvedAt).getTime() - new Date(c.createdAt).getTime()),
-      0
-    );
-    avgResolutionHours = Math.round(totalMs / resolvedComplaints.length / 3_600_000);
-  }
-
-  const byStatus = { OPEN: 0, IN_PROGRESS: 0, RESOLVED: 0, REOPENED: 0 };
-  for (const row of byStatusRaw) byStatus[row.status] = row._count.id;
-
-  const byCategory = { ELECTRICAL: 0, PLUMBING: 0, SECURITY: 0, CLEANING: 0, OTHER: 0 };
-  for (const row of byCategoryRaw) byCategory[row.category] = row._count.id;
-
-  return res.status(200).json({ total, byStatus, byCategory, overdue, avgResolutionHours });
+  return res.status(200).json(result);
 };
 
 /**
  * Recurring issues — flat+category pairs with ≥2 complaints in the last 60 days.
- * Sorted by count DESC so the worst offenders surface first.
- * "Which issues keep coming back?" — this is the direct answer.
  */
 export const getRecurringIssues = async (_req, res) => {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      u.flat_no                          AS "flatNo",
-      c.category                         AS "category",
-      COUNT(*)::int                      AS "count",
-      MAX(c.created_at)                  AS "lastSeen"
-    FROM complaints c
-    JOIN users u ON u.id = c.user_id
-    WHERE
-      c.created_at >= NOW() - INTERVAL '60 days'
-      AND u.flat_no IS NOT NULL
-    GROUP BY u.flat_no, c.category
-    HAVING COUNT(*) >= 2
-    ORDER BY COUNT(*) DESC, MAX(c.created_at) DESC
-    LIMIT 10
-  `;
+  const rows = await withCache(CACHE_KEYS.RECURRING_ISSUES, async () =>
+    prisma.$queryRaw`
+      SELECT
+        u.flat_no                          AS "flatNo",
+        c.category                         AS "category",
+        COUNT(*)::int                      AS "count",
+        MAX(c.created_at)                  AS "lastSeen"
+      FROM complaints c
+      JOIN users u ON u.id = c.user_id
+      WHERE
+        c.created_at >= NOW() - INTERVAL '60 days'
+        AND u.flat_no IS NOT NULL
+      GROUP BY u.flat_no, c.category
+      HAVING COUNT(*) >= 2
+      ORDER BY COUNT(*) DESC, MAX(c.created_at) DESC
+      LIMIT 10
+    `
+  );
 
   return res.status(200).json(rows);
 };
 
 /**
- * Average resolution time per category — the metric real maintenance ops teams track.
- * Only counts complaints that have actually been resolved.
+ * Average resolution time per category.
  */
 export const getResolutionByCategory = async (_req, res) => {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      category,
-      COUNT(*)::int                                                     AS "resolvedCount",
-      ROUND(
-        AVG(
-          EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
-        )::numeric,
-        1
-      )::float                                                          AS "avgHours"
-    FROM complaints
-    WHERE
-      status    = 'RESOLVED'
-      AND resolved_at IS NOT NULL
-    GROUP BY category
-    ORDER BY "avgHours" ASC
-  `;
+  const rows = await withCache(CACHE_KEYS.RESOLUTION_CATEGORY, async () =>
+    prisma.$queryRaw`
+      SELECT
+        category,
+        COUNT(*)::int                                                     AS "resolvedCount",
+        ROUND(
+          AVG(
+            EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
+          )::numeric,
+          1
+        )::float                                                          AS "avgHours"
+      FROM complaints
+      WHERE
+        status    = 'RESOLVED'
+        AND resolved_at IS NOT NULL
+      GROUP BY category
+      ORDER BY "avgHours" ASC
+    `
+  );
 
   return res.status(200).json(rows);
 };
 
 /**
  * Weekly trend — complaints raised + average resolution hours per week.
- * Feeds the dual-axis chart on the dashboard so volume and velocity
- * are visible together, not in separate disconnected cards.
  */
 export const getWeeklyTrend = async (_req, res) => {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      DATE_TRUNC('week', created_at)                                    AS week_start,
-      COUNT(*)::int                                                     AS complaints,
-      ROUND(
-        AVG(
-          CASE
-            WHEN resolved_at IS NOT NULL
-            THEN EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
-          END
-        )::numeric,
-        1
-      )::float                                                          AS "avgResolutionHours"
-    FROM complaints
-    WHERE created_at >= NOW() - INTERVAL '6 weeks'
-    GROUP BY week_start
-    ORDER BY week_start ASC
-  `;
+  const result = await withCache(CACHE_KEYS.WEEKLY_TREND, async () => {
+    const rows = await prisma.$queryRaw`
+      SELECT
+        DATE_TRUNC('week', created_at)                                    AS week_start,
+        COUNT(*)::int                                                     AS complaints,
+        ROUND(
+          AVG(
+            CASE
+              WHEN resolved_at IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600
+            END
+          )::numeric,
+          1
+        )::float                                                          AS "avgResolutionHours"
+      FROM complaints
+      WHERE created_at >= NOW() - INTERVAL '6 weeks'
+      GROUP BY week_start
+      ORDER BY week_start ASC
+    `;
 
-  const now = new Date();
-  const weeks = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - (5 - i) * 7);
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  });
+    const now = new Date();
+    const weeks = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (5 - i) * 7);
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    });
 
-  const result = weeks.map((weekStart) => {
-    const label = weekStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-    const match = rows.find(
-      (r) => new Date(r.week_start).toDateString() === weekStart.toDateString(),
-    );
-    return {
-      week:               label,
-      complaints:         match?.complaints         ?? 0,
-      avgResolutionHours: match?.avgResolutionHours ?? null,
-    };
+    return weeks.map((weekStart) => {
+      const label = weekStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      const match = rows.find(
+        (r) => new Date(r.week_start).toDateString() === weekStart.toDateString(),
+      );
+      return {
+        week:               label,
+        complaints:         match?.complaints         ?? 0,
+        avgResolutionHours: match?.avgResolutionHours ?? null,
+      };
+    });
   });
 
   return res.status(200).json(result);

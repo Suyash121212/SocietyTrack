@@ -1,24 +1,16 @@
-const STATUS_STYLES = {
-  OPEN:        'bg-gray-100 text-gray-600',
-  IN_PROGRESS: 'bg-amber-100 text-amber-700',
-  RESOLVED:    'bg-green-100 text-green-700',
-  REOPENED:    'bg-purple-100 text-purple-700',
-};
-
-const STATUS_LABELS = {
-  OPEN:        'Open',
-  IN_PROGRESS: 'In Progress',
-  RESOLVED:    'Resolved',
-  REOPENED:    'Reopened',
+const CONFIG = {
+  OPEN:        { label: 'Open',        dot: 'bg-blue-400',   cls: 'bg-blue-50   text-blue-700   border-blue-200'   },
+  IN_PROGRESS: { label: 'In Progress', dot: 'bg-amber-400',  cls: 'bg-amber-50  text-amber-700  border-amber-200'  },
+  RESOLVED:    { label: 'Resolved',    dot: 'bg-green-400',  cls: 'bg-green-50  text-green-700  border-green-200'  },
+  REOPENED:    { label: 'Reopened',    dot: 'bg-purple-400', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
 };
 
 export default function StatusBadge({ status }) {
-  const styles = STATUS_STYLES[status] ?? 'bg-gray-100 text-gray-500';
-  const label  = STATUS_LABELS[status] ?? status;
-
+  const cfg = CONFIG[status] ?? { label: status, dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-600 border-slate-200' };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles}`}>
-      {label}
+    <span className={`badge ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
     </span>
   );
 }

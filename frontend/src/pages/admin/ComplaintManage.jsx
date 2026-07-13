@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, AlertTriangle, Tag, CalendarClock, CheckCircle2,
-  FileText, ImageIcon, History, ChevronRight, Clock, Timer, RotateCcw,
+  ArrowLeft, AlertTriangle, Tag, Calendar, CheckCircle2,
+  FileText, Image as ImageIcon, History, ChevronRight,
+  Clock, Timer, RotateCcw,
 } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
@@ -18,46 +19,40 @@ const VALID_TRANSITIONS = {
   RESOLVED:    [],
   REOPENED:    ['IN_PROGRESS', 'RESOLVED'],
 };
-
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
-const MetaField = ({ label, value, icon: Icon }) => (
-  <div className="flex items-start gap-2.5">
-    <span className="mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-50 text-gray-400 shrink-0">
-      <Icon size={13} strokeWidth={2.25} />
-    </span>
+const fadeUp = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16,1,0.3,1] } } };
+const stagger = { show: { transition: { staggerChildren: 0.06 } } };
+
+const MetaItem = ({ icon: Icon, label, value }) => (
+  <div className="flex items-start gap-3">
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-100 mt-0.5">
+      <Icon size={13} className="text-ink-faint" strokeWidth={2} />
+    </div>
     <div>
-      <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">{label}</p>
-      <p className="text-gray-800 mt-0.5 text-sm">{value}</p>
+      <p className="text-[11px] font-semibold text-ink-faint uppercase tracking-widest">{label}</p>
+      <p className="text-sm text-ink mt-0.5">{value}</p>
     </div>
   </div>
 );
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
-};
-
 export default function ComplaintManage() {
   const { id } = useParams();
 
-  const [complaint, setComplaint]             = useState(null);
-  const [loading, setLoading]                 = useState(true);
-  const [error, setError]                     = useState('');
-  const [statusForm, setStatusForm]           = useState({ status: '', note: '' });
-  const [statusError, setStatusError]         = useState('');
-  const [statusLoading, setStatusLoading]     = useState(false);
-  const [priorityLoading, setPriorityLoading] = useState(false);
-  const [priorityError, setPriorityError]     = useState('');
-  const [toast, setToast]                     = useState(null);
+  const [complaint,      setComplaint]      = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState('');
+  const [statusForm,     setStatusForm]     = useState({ status: '', note: '' });
+  const [statusError,    setStatusError]    = useState('');
+  const [statusLoading,  setStatusLoading]  = useState(false);
+  const [priorityLoading,setPriorityLoading]= useState(false);
+  const [priorityError,  setPriorityError]  = useState('');
+  const [toast,          setToast]          = useState(null);
 
   const fetchComplaint = useCallback(() => {
     setLoading(true);
     axiosInstance.get(`/complaints/${id}`)
-      .then(({ data }) => {
-        setComplaint(data);
-        setStatusForm({ status: '', note: '' });
-      })
+      .then(({ data }) => { setComplaint(data); setStatusForm({ status: '', note: '' }); })
       .catch(() => setError('Failed to load complaint.'))
       .finally(() => setLoading(false));
   }, [id]);
@@ -68,37 +63,26 @@ export default function ComplaintManage() {
     e.preventDefault();
     setStatusError('');
     setStatusLoading(true);
-
-    // Snapshot for rollback
     const snapshot = complaint;
 
-    // Optimistic update — apply new status immediately
-    setComplaint((prev) => ({
+    setComplaint(prev => ({
       ...prev,
       status: statusForm.status,
       resolvedAt: statusForm.status === 'RESOLVED' ? new Date().toISOString() : prev.resolvedAt,
-      statusHistory: [
-        ...prev.statusHistory,
-        {
-          oldStatus: prev.status,
-          newStatus: statusForm.status,
-          changedBy: 'Admin',
-          note: statusForm.note || null,
-          changedAt: new Date().toISOString(),
-        },
-      ],
+      statusHistory: [...prev.statusHistory, {
+        oldStatus: prev.status, newStatus: statusForm.status,
+        changedBy: 'Admin', note: statusForm.note || null,
+        changedAt: new Date().toISOString(),
+      }],
     }));
     setStatusForm({ status: '', note: '' });
 
     try {
       await axiosInstance.patch(`/admin/complaints/${id}/status`, statusForm);
       setToast({ message: `Status updated to ${statusForm.status.replace('_', ' ')}`, type: 'success' });
-      // Sync with server to get accurate timestamps and admin name
       fetchComplaint();
     } catch (err) {
-      // Rollback on failure
       setComplaint(snapshot);
-      setStatusForm({ status: snapshot.status === statusForm.status ? '' : statusForm.status, note: statusForm.note });
       const msg = err.response?.data?.error || 'Failed to update status.';
       setStatusError(msg);
       setToast({ message: msg, type: 'error' });
@@ -112,18 +96,12 @@ export default function ComplaintManage() {
     if (!priority) return;
     setPriorityError('');
     setPriorityLoading(true);
-
-    // Snapshot for rollback
     const snapshot = complaint;
-
-    // Optimistic update
-    setComplaint((prev) => ({ ...prev, priority }));
-
+    setComplaint(prev => ({ ...prev, priority }));
     try {
       await axiosInstance.patch(`/admin/complaints/${id}/priority`, { priority });
       setToast({ message: `Priority set to ${priority}`, type: 'success' });
     } catch (err) {
-      // Rollback on failure
       setComplaint(snapshot);
       const msg = err.response?.data?.error || 'Failed to update priority.';
       setPriorityError(msg);
@@ -136,10 +114,9 @@ export default function ComplaintManage() {
   if (loading) {
     return (
       <Layout>
-        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-3">
+        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-white rounded-xl h-16 border border-gray-100"
-              style={{ animationDelay: `${i * 60}ms` }} />
+            <div key={i} className="skeleton h-20 rounded-2xl" style={{ animationDelay: `${i * 60}ms` }} />
           ))}
         </div>
       </Layout>
@@ -149,178 +126,166 @@ export default function ComplaintManage() {
   if (error || !complaint) {
     return (
       <Layout>
-        <div className="flex flex-col items-center justify-center gap-3 min-h-[60vh] text-center px-6">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
-            <AlertTriangle size={22} strokeWidth={1.75} />
+        <div className="flex flex-col items-center justify-center gap-4 min-h-[60vh] text-center px-6">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50">
+            <AlertTriangle size={22} className="text-red-500" strokeWidth={1.75} />
           </div>
-          <p className="text-red-600 font-medium">{error || 'Complaint not found.'}</p>
-          <Link to="/admin/complaints" className="text-sm text-indigo-600 hover:underline">
-            ← Back to All Complaints
-          </Link>
+          <p className="font-semibold text-ink">{error || 'Complaint not found.'}</p>
+          <Link to="/admin/complaints" className="btn-secondary btn-sm">← All Complaints</Link>
         </div>
       </Layout>
     );
   }
 
-  const allowedTransitions = VALID_TRANSITIONS[complaint.status] ?? [];
+  const allowed = VALID_TRANSITIONS[complaint.status] ?? [];
 
   return (
     <Layout>
-      {toast && (
-        <Toast
-          message={toast.message}
-          status={toast.type === 'error' ? 'OPEN' : 'RESOLVED'}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <AnimatePresence>
+        {toast && <Toast message={toast.message} status={toast.type === 'error' ? 'error' : 'RESOLVED'} onClose={() => setToast(null)} />}
+      </AnimatePresence>
 
       <div className="p-6 md:p-8 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        {/* Page header */}
+        <div className="flex items-start justify-between mb-6 gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Manage Complaint</h1>
-            <p className="text-sm text-gray-500 mt-1">Review details and update status or priority</p>
+            <Link to="/admin/complaints" className="inline-flex items-center gap-1.5 text-xs text-ink-faint hover:text-ink-muted transition-colors mb-3">
+              <ArrowLeft size={12} strokeWidth={2} /> All Complaints
+            </Link>
+            <h1 className="page-title">Manage Complaint</h1>
+            <p className="page-subtitle">Review, update status and set priority</p>
           </div>
-          <Link
-            to="/admin/complaints"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"
-          >
-            <ArrowLeft size={15} strokeWidth={2.25} />
-            All Complaints
-          </Link>
+          <span className="font-mono text-xs text-ink-faint bg-surface-100 border border-surface-200 rounded-lg px-2.5 py-1.5 mt-8 shrink-0">
+            #{String(id).slice(-8).toUpperCase()}
+          </span>
         </div>
 
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={{ show: { transition: { staggerChildren: 0.06 } } }}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6"
-        >
-          {/* Badges — update instantly via optimistic state */}
-          <motion.div variants={fadeUp} className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={complaint.status} />
-            <PriorityBadge priority={complaint.priority} />
-            {complaint.isOverdue && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
-                <AlertTriangle size={11} strokeWidth={2.5} />
-                Overdue
-              </span>
-            )}
-          </motion.div>
+        <motion.div initial="hidden" animate="show" variants={stagger} className="space-y-5">
 
-          <motion.div variants={fadeUp} className="grid grid-cols-2 gap-5 pt-1">
-            <MetaField label="Category" value={complaint.category.charAt(0) + complaint.category.slice(1).toLowerCase()} icon={Tag} />
-            <MetaField label="Raised on" value={new Date(complaint.createdAt).toLocaleString()} icon={CalendarClock} />
-            {complaint.resolvedAt && (
-              <MetaField label="Resolved on" value={new Date(complaint.resolvedAt).toLocaleString()} icon={CheckCircle2} />
-            )}
-          </motion.div>
-
-          {/* Computed metrics */}
-          {(complaint.timeInStatus || complaint.resolutionTime) && (
-            <motion.div variants={fadeUp} className="flex flex-wrap gap-4">
-              {complaint.timeInStatus && (
-                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-                  <Clock size={12} strokeWidth={2.25} />
-                  <span>In current status: <span className="font-semibold">{complaint.timeInStatus}</span></span>
-                </div>
-              )}
-              {complaint.resolutionTime && (
-                <div className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-700">
-                  <Timer size={12} strokeWidth={2.25} />
-                  <span>Resolved in: <span className="font-semibold">{complaint.resolutionTime}</span></span>
-                </div>
+          {/* Badges + metrics */}
+          <motion.div variants={fadeUp} className="card p-5">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <StatusBadge status={complaint.status} />
+              <PriorityBadge priority={complaint.priority} />
+              {complaint.isOverdue && (
+                <span className="badge bg-red-50 text-red-700 border-red-200">
+                  <AlertTriangle size={10} strokeWidth={2.5} /> Overdue
+                </span>
               )}
               {complaint.status === 'REOPENED' && (
-                <div className="flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2 text-xs text-purple-700">
-                  <RotateCcw size={12} strokeWidth={2.25} />
-                  <span>Resident-reopened — needs attention</span>
-                </div>
+                <span className="badge bg-purple-50 text-purple-700 border-purple-200">
+                  <RotateCcw size={10} strokeWidth={2.5} /> Needs attention
+                </span>
               )}
-            </motion.div>
-          )}
-
-          <motion.div variants={fadeUp}>
-            <div className="flex items-center gap-2 mb-2">
-              <FileText size={13} className="text-gray-400" strokeWidth={2.25} />
-              <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Description</p>
             </div>
-            <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 rounded-xl p-4 border border-gray-100">
-              {complaint.description}
-            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <MetaItem icon={Tag}      label="Category" value={complaint.category.charAt(0) + complaint.category.slice(1).toLowerCase()} />
+              <MetaItem icon={Calendar} label="Raised on" value={new Date(complaint.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+              {complaint.resolvedAt && (
+                <MetaItem icon={CheckCircle2} label="Resolved on" value={new Date(complaint.resolvedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+              )}
+            </div>
+
+            {(complaint.timeInStatus || complaint.resolutionTime) && (
+              <div className="flex flex-wrap gap-2.5 mt-4 pt-4 border-t border-surface-200">
+                {complaint.timeInStatus && (
+                  <span className="badge bg-amber-50 text-amber-700 border-amber-200">
+                    <Clock size={10} strokeWidth={2} /> In status: {complaint.timeInStatus}
+                  </span>
+                )}
+                {complaint.resolutionTime && (
+                  <span className="badge bg-green-50 text-green-700 border-green-200">
+                    <Timer size={10} strokeWidth={2} /> Resolved in: {complaint.resolutionTime}
+                  </span>
+                )}
+              </div>
+            )}
           </motion.div>
 
-          {complaint.photoUrl && (
-            <motion.div variants={fadeUp}>
-              <div className="flex items-center gap-2 mb-2">
-                <ImageIcon size={13} className="text-gray-400" strokeWidth={2.25} />
-                <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Photo</p>
+          {/* Description */}
+          <motion.div variants={fadeUp} className="card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText size={13} className="text-ink-faint" strokeWidth={2} />
+              <p className="text-xs font-semibold text-ink-faint uppercase tracking-widest">Description</p>
+            </div>
+            <p className="text-sm text-ink-muted leading-relaxed">{complaint.description}</p>
+          </motion.div>
+
+          {/* Photos */}
+          {complaint.photos?.length > 0 && (
+            <motion.div variants={fadeUp} className="card p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <ImageIcon size={13} className="text-ink-faint" strokeWidth={2} />
+                <p className="text-xs font-semibold text-ink-faint uppercase tracking-widest">
+                  Photos ({complaint.photos.length})
+                </p>
               </div>
-              <img src={complaint.photoUrl} alt="Complaint photo"
-                className="rounded-xl max-h-64 object-cover border border-gray-200 shadow-sm" />
+              <div className={`grid gap-2.5 ${complaint.photos.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-3'}`}>
+                {complaint.photos.map(p => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer"
+                    className="block overflow-hidden rounded-xl border border-surface-200 hover:opacity-90 transition-opacity"
+                  >
+                    <img src={p.thumbnailUrl} alt="" className="w-full aspect-square object-cover" />
+                  </a>
+                ))}
+              </div>
             </motion.div>
           )}
 
-          {/* Update Status — optimistic submit */}
-          {allowedTransitions.length > 0 && (
-            <motion.div variants={fadeUp}
-              className="bg-gradient-to-b from-indigo-50/60 to-gray-50 rounded-xl p-5 border border-indigo-100/60">
-              <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
-                <ChevronRight size={14} className="text-indigo-500" strokeWidth={2.5} />
-                Update Status
-              </p>
+          {/* Update status */}
+          {allowed.length > 0 && (
+            <motion.div variants={fadeUp} className="card p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <ChevronRight size={14} className="text-brand-500" strokeWidth={2.5} />
+                <p className="text-sm font-semibold text-ink">Update Status</p>
+              </div>
+
               <AnimatePresence>
                 {statusError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                    className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3.5 py-2.5 mb-4 overflow-hidden"
                   >
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                    <span>{statusError}</span>
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" strokeWidth={2} />
+                    {statusError}
                   </motion.div>
                 )}
               </AnimatePresence>
+
               <form onSubmit={handleStatusSubmit} className="space-y-3">
                 <select
                   value={statusForm.status}
-                  onChange={(e) => setStatusForm((p) => ({ ...p, status: e.target.value }))}
+                  onChange={e => setStatusForm(p => ({ ...p, status: e.target.value }))}
                   required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow"
+                  className="input"
                 >
-                  <option value="">Select new status</option>
-                  {allowedTransitions.map((s) => (
-                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                  ))}
+                  <option value="">Select new status…</option>
+                  {allowed.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
                 </select>
                 <input
                   type="text"
-                  placeholder="Optional note…"
+                  placeholder="Add a note for the resident (optional)…"
                   value={statusForm.note}
-                  onChange={(e) => setStatusForm((p) => ({ ...p, note: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow"
+                  onChange={e => setStatusForm(p => ({ ...p, note: e.target.value }))}
+                  className="input"
                 />
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  type="submit"
-                  disabled={statusLoading}
-                  className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60 shadow-sm"
-                >
+                <button type="submit" disabled={statusLoading} className="btn-primary">
                   {statusLoading ? 'Saving…' : 'Update Status'}
-                </motion.button>
+                </button>
               </form>
             </motion.div>
           )}
 
-          {/* Set Priority — optimistic change */}
-          <motion.div variants={fadeUp} className="bg-gray-50 rounded-xl p-5 border border-gray-100">
-            <p className="text-sm font-semibold text-gray-800 mb-3">Set Priority</p>
+          {/* Priority */}
+          <motion.div variants={fadeUp} className="card p-5">
+            <p className="text-sm font-semibold text-ink mb-3">Set Priority</p>
             <AnimatePresence>
               {priorityError && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                  className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3.5 py-2.5 mb-3 overflow-hidden"
                 >
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                  <span>{priorityError}</span>
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" strokeWidth={2} />
+                  {priorityError}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -328,22 +293,22 @@ export default function ComplaintManage() {
               value={complaint.priority ?? ''}
               onChange={handlePriorityChange}
               disabled={priorityLoading}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow disabled:opacity-60"
+              className="input max-w-[200px]"
             >
               <option value="">No priority</option>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
-              ))}
+              {PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>)}
             </select>
           </motion.div>
 
-          <motion.div variants={fadeUp}>
-            <div className="flex items-center gap-2 mb-3">
-              <History size={13} className="text-gray-400" strokeWidth={2.25} />
-              <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Status History</p>
+          {/* History */}
+          <motion.div variants={fadeUp} className="card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <History size={13} className="text-ink-faint" strokeWidth={2} />
+              <p className="text-xs font-semibold text-ink-faint uppercase tracking-widest">Status History</p>
             </div>
             <StatusTimeline history={complaint.statusHistory} />
           </motion.div>
+
         </motion.div>
       </div>
     </Layout>

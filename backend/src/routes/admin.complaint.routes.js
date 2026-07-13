@@ -17,7 +17,7 @@ router.use(verifyToken, requireAdmin);
 
 // ── Dashboard / reporting ────────────────────────────────────────────────────
 router.get('/dashboard',                     getDashboard);
-router.get('/dashboard/weekly',              getWeeklyTrend);           // replaces old getWeeklyStats
+router.get('/dashboard/weekly',              getWeeklyTrend);           
 router.get('/dashboard/recurring',           getRecurringIssues);
 router.get('/dashboard/resolution-by-category', getResolutionByCategory);
 

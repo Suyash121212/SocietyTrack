@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
-import { ArrowLeft, AlertCircle, RefreshCw, Image as ImageIcon, Calendar, CheckCircle2, RotateCcw, Clock, Timer } from 'lucide-react';
+import {
+  ArrowLeft, AlertCircle, RefreshCw, Image as ImageIcon,
+  Calendar, CheckCircle2, RotateCcw, Clock, Timer, Wifi, WifiOff,
+} from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
@@ -9,42 +13,31 @@ import StatusTimeline from '../../components/StatusTimeline.jsx';
 import Toast from '../../components/Toast.jsx';
 import Layout from '../../components/Layout.jsx';
 
-
-const TOKENS = {
-  '--bg': '#FAFAFA',
-  '--surface': '#FFFFFF',
-  '--border': '#E8EAED',
-  '--ink': '#111318',
-  '--ink-2': '#667085',
-  '--ink-3': '#98A2B3',
-  '--accent': '#3652E0',
-  '--accent-hover': '#2A41B8',
-  '--accent-soft': '#EEF1FE',
-  '--success': '#15803D',
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
 };
+const stagger = { show: { transition: { staggerChildren: 0.07 } } };
 
 export default function ComplaintDetail() {
   const { id } = useParams();
 
   const [complaint, setComplaint] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [toast, setToast] = useState(null);
-  const [live, setLive] = useState(false);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+  const [toast,     setToast]     = useState(null);
+  const [live,      setLive]      = useState(false);
   const [reopening, setReopening] = useState(false);
 
   const fetchComplaint = useCallback(() => {
     setError('');
-    axiosInstance
-      .get(`/complaints/${id}`)
+    axiosInstance.get(`/complaints/${id}`)
       .then(({ data }) => setComplaint(data))
       .catch(() => setError('Failed to load complaint.'))
       .finally(() => setLoading(false));
   }, [id]);
 
-  useEffect(() => {
-    fetchComplaint();
-  }, [fetchComplaint]);
+  useEffect(() => { fetchComplaint(); }, [fetchComplaint]);
 
   const handleReopen = async () => {
     setReopening(true);
@@ -53,88 +46,61 @@ export default function ComplaintDetail() {
       fetchComplaint();
       setToast({ message: 'Complaint reopened. The admin team has been notified.', status: 'REOPENED' });
     } catch (err) {
-      setToast({
-        message: err.response?.data?.error || 'Failed to reopen complaint.',
-        status: 'OPEN',
-      });
+      setToast({ message: err.response?.data?.error || 'Failed to reopen.', status: 'error' });
     } finally {
       setReopening(false);
     }
   };
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL.replace('/api', ''), {
-      transports: ['websocket'],
-    });
-
-    socket.on('connect', () => setLive(true));
+    const socket = io(import.meta.env.VITE_API_URL.replace('/api', ''), { transports: ['websocket'] });
+    socket.on('connect',    () => setLive(true));
     socket.on('disconnect', () => setLive(false));
-
     socket.emit('join-complaint', id);
-
-    socket.on('status-updated', (payload) => {
+    socket.on('status-updated', payload => {
       fetchComplaint();
       setToast({
-        message: `Status changed from ${payload.oldStatus.replace('_', ' ')} → ${payload.newStatus.replace('_', ' ')}${payload.note ? `. Note: ${payload.note}` : ''}`,
+        message: `Status changed: ${payload.oldStatus.replace('_', ' ')} → ${payload.newStatus.replace('_', ' ')}${payload.note ? `. Note: ${payload.note}` : ''}`,
         status: payload.newStatus,
       });
     });
-
-    return () => {
-      socket.emit('leave-complaint', id);
-      socket.disconnect();
-    };
+    return () => { socket.emit('leave-complaint', id); socket.disconnect(); };
   }, [id, fetchComplaint]);
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <Layout>
-        <div className="mx-auto max-w-4xl p-6 md:p-8" style={TOKENS}>
-          <div className="mb-6 space-y-3">
-            <div className="h-3 w-32 animate-pulse rounded bg-[var(--border)]" />
-            <div className="h-6 w-48 animate-pulse rounded bg-[var(--border)]" />
-          </div>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-            <div className="h-44 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)] lg:col-span-3" />
-            <div className="h-64 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)] lg:col-span-2" />
+        <div className="p-6 md:p-8 max-w-4xl mx-auto">
+          <div className="h-4 skeleton rounded-lg w-32 mb-6" />
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+            <div className="skeleton h-48 rounded-2xl lg:col-span-3" />
+            <div className="skeleton h-72 rounded-2xl lg:col-span-2" />
           </div>
         </div>
       </Layout>
     );
   }
 
+  // ── Error ──────────────────────────────────────────────────────────────────
   if (error || !complaint) {
     return (
       <Layout>
-        <div className="flex min-h-[60vh] items-center justify-center px-6" style={TOKENS}>
+        <div className="flex min-h-[60vh] items-center justify-center px-6">
           <div className="max-w-sm text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
-              <AlertCircle className="h-5 w-5 text-red-600" strokeWidth={1.75} />
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50">
+              <AlertCircle size={22} className="text-red-500" strokeWidth={1.75} />
             </div>
-            <p className="mb-1 font-['Plus_Jakarta_Sans'] font-semibold text-[var(--ink)]">
-              {error || 'Complaint not found'}
-            </p>
-            <p className="mb-5 text-sm text-[var(--ink-2)]">
-              It may have been removed, or something went wrong while loading it.
-            </p>
+            <p className="font-semibold text-ink mb-1">{error || 'Complaint not found'}</p>
+            <p className="text-sm text-ink-muted mb-6">It may have been removed or something went wrong.</p>
             <div className="flex justify-center gap-2.5">
               <button
-                type="button"
-                onClick={() => {
-                  setLoading(true);
-                  fetchComplaint();
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                onClick={() => { setLoading(true); fetchComplaint(); }}
+                className="btn-primary btn-sm"
               >
-                <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
-                Try again
+                <RefreshCw size={13} strokeWidth={2} /> Try again
               </button>
-              <Link
-                to="/complaints"
-                className="inline-flex items-center rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--ink)] transition-colors hover:bg-[var(--bg)]"
-              >
-                Back to complaints
-              </Link>
+              <Link to="/complaints" className="btn-secondary btn-sm">Back to complaints</Link>
             </div>
           </div>
         </div>
@@ -142,145 +108,176 @@ export default function ComplaintDetail() {
     );
   }
 
+  // ── Main ──────────────────────────────────────────────────────────────────
   return (
     <Layout>
-      {toast && <Toast message={toast.message} status={toast.status} onClose={() => setToast(null)} />}
+      <AnimatePresence>
+        {toast && <Toast message={toast.message} status={toast.status} onClose={() => setToast(null)} />}
+      </AnimatePresence>
 
-      <div className="mx-auto max-w-4xl p-6 font-['Inter'] text-[var(--ink)] md:p-8" style={TOKENS}>
+      <div className="p-6 md:p-8 max-w-4xl mx-auto">
+
+        {/* Breadcrumb */}
+        <Link to="/complaints" className="inline-flex items-center gap-1.5 text-xs text-ink-faint hover:text-ink-muted transition-colors mb-5">
+          <ArrowLeft size={12} strokeWidth={2} /> Back to complaints
+        </Link>
+
         {/* Header */}
-        <div className="mb-6">
-          <Link
-            to="/complaints"
-            className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--ink-2)] transition-colors hover:text-[var(--accent)]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
-            Back to complaints
-          </Link>
-
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="font-['Plus_Jakarta_Sans'] text-xl font-bold capitalize text-[var(--ink)]">
-                  {complaint.category.toLowerCase()}
-                </h1>
-                <span className="rounded-md bg-[var(--bg)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink-3)]">
-                  #{String(id).slice(-6).toUpperCase()}
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-[var(--ink-2)]">
-                Submitted {new Date(complaint.createdAt).toLocaleDateString()}
-              </p>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="font-display text-xl font-bold capitalize text-ink">
+                {complaint.category.toLowerCase()}
+              </h1>
+              <span className="font-mono text-[11px] text-ink-faint bg-surface-100 border border-surface-200 rounded-lg px-2 py-0.5">
+                #{String(id).slice(-6).toUpperCase()}
+              </span>
             </div>
+            <p className="mt-1 text-sm text-ink-muted">
+              Submitted {new Date(complaint.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {live && (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)]"
-                  title="This page updates automatically when the status changes — no need to refresh"
-                >
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Live
-                </span>
-              )}
-              {complaint.isOverdue && (
-                <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
-                  Overdue
-                </span>
-              )}
-              <StatusBadge status={complaint.status} />
-              <PriorityBadge priority={complaint.priority} />
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Live indicator */}
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
+                ${live ? 'bg-green-50 border-green-200 text-green-700' : 'bg-surface-100 border-surface-200 text-ink-faint'}`}
+              title={live ? 'Updates in real time' : 'Not connected'}
+            >
+              {live
+                ? <><span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" /> Live</>
+                : <><WifiOff size={10} strokeWidth={2} /> Offline</>
+              }
+            </span>
+            {complaint.isOverdue && (
+              <span className="badge bg-red-50 text-red-700 border-red-200">Overdue</span>
+            )}
+            <StatusBadge status={complaint.status} />
+            <PriorityBadge priority={complaint.priority} />
           </div>
         </div>
 
-        {/* Content vs. timeline — separated so "what happened" and "where it stands" are easy to tell apart */}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-          {/* Main content */}
+        {/* Body — 3/5 + 2/5 grid */}
+        <motion.div
+          initial="hidden" animate="show" variants={stagger}
+          className="grid grid-cols-1 gap-5 lg:grid-cols-5"
+        >
+          {/* ── Left column ── */}
           <div className="space-y-5 lg:col-span-3">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Description</p>
-              <p className="text-sm leading-relaxed text-[var(--ink)]">{complaint.description}</p>
-            </div>
 
-            {complaint.photoUrl && (
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-                <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">
-                  <ImageIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Photo
+            {/* Description */}
+            <motion.div variants={fadeUp} className="card p-6">
+              <p className="section-title">Description</p>
+              <p className="text-sm leading-relaxed text-ink">{complaint.description}</p>
+            </motion.div>
+
+            {/* Photos */}
+            {complaint.photos?.length > 0 && (
+              <motion.div variants={fadeUp} className="card p-6">
+                <p className="section-title flex items-center gap-1.5">
+                  <ImageIcon size={11} strokeWidth={2} />
+                  Photos ({complaint.photos.length})
                 </p>
-                <img
-                  src={complaint.photoUrl}
-                  alt="Complaint"
-                  className="max-h-80 w-full rounded-xl border border-[var(--border)] object-cover"
-                />
-              </div>
+                <div className={`grid gap-2.5 ${complaint.photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {complaint.photos.map(photo => (
+                    <a
+                      key={photo.id}
+                      href={photo.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View full size"
+                      className="block overflow-hidden rounded-xl border border-surface-200 hover:opacity-90 transition-opacity"
+                    >
+                      <img
+                        src={photo.thumbnailUrl}
+                        alt={`Photo ${photo.position + 1}`}
+                        className="w-full aspect-square object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </motion.div>
             )}
           </div>
 
-          {/* Timeline sidebar — dates and status history live together since they're both "when" */}
-          <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Timeline</p>
+          {/* ── Right column — timeline ── */}
+          <motion.div variants={fadeUp} className="lg:col-span-2">
+            <div className="card p-6 space-y-5">
 
-              <div className="mb-4 space-y-3">
-                <div className="flex items-start gap-2.5 text-sm">
-                  <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-3)]" strokeWidth={1.75} />
-                  <div>
-                    <p className="text-[var(--ink)]">{new Date(complaint.createdAt).toLocaleString()}</p>
-                    <p className="text-xs text-[var(--ink-3)]">Raised</p>
-                  </div>
-                </div>
-                {complaint.resolvedAt && (
-                  <div className="flex items-start gap-2.5 text-sm">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]" strokeWidth={1.75} />
+              {/* Dates */}
+              <div>
+                <p className="section-title">Timeline</p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 border border-brand-200 shrink-0 mt-0.5">
+                      <Calendar size={11} className="text-brand-500" strokeWidth={2} />
+                    </div>
                     <div>
-                      <p className="text-[var(--ink)]">{new Date(complaint.resolvedAt).toLocaleString()}</p>
-                      <p className="text-xs text-[var(--ink-3)]">Resolved</p>
+                      <p className="text-xs font-semibold text-ink">
+                        {new Date(complaint.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p className="text-[11px] text-ink-faint">Raised</p>
                     </div>
                   </div>
-                )}
+                  {complaint.resolvedAt && (
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-50 border border-green-200 shrink-0 mt-0.5">
+                        <CheckCircle2 size={11} className="text-green-500" strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-ink">
+                          {new Date(complaint.resolvedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <p className="text-[11px] text-ink-faint">Resolved</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="border-t border-[var(--border)] pt-4">
+              {/* Status history */}
+              <div className="border-t border-surface-200 pt-5">
+                <p className="section-title">Status History</p>
                 <StatusTimeline history={complaint.statusHistory} />
               </div>
 
-              {/* Computed metrics */}
-              <div className="mt-4 border-t border-[var(--border)] pt-4 space-y-2.5">
-                {complaint.timeInStatus && (
-                  <div className="flex items-center gap-2 text-xs text-[var(--ink-2)]">
-                    <Clock className="h-3.5 w-3.5 text-[var(--ink-3)]" strokeWidth={1.75} />
-                    <span>In current status: <span className="font-medium text-[var(--ink)]">{complaint.timeInStatus}</span></span>
-                  </div>
-                )}
-                {complaint.resolutionTime && (
-                  <div className="flex items-center gap-2 text-xs text-[var(--ink-2)]">
-                    <Timer className="h-3.5 w-3.5 text-[var(--ink-3)]" strokeWidth={1.75} />
-                    <span>Resolution time: <span className="font-medium text-[var(--ink)]">{complaint.resolutionTime}</span></span>
-                  </div>
-                )}
-              </div>
+              {/* Metrics */}
+              {(complaint.timeInStatus || complaint.resolutionTime) && (
+                <div className="border-t border-surface-200 pt-4 flex flex-wrap gap-2">
+                  {complaint.timeInStatus && (
+                    <span className="badge bg-amber-50 text-amber-700 border-amber-200">
+                      <Clock size={10} strokeWidth={2} /> {complaint.timeInStatus} in current status
+                    </span>
+                  )}
+                  {complaint.resolutionTime && (
+                    <span className="badge bg-green-50 text-green-700 border-green-200">
+                      <Timer size={10} strokeWidth={2} /> Resolved in {complaint.resolutionTime}
+                    </span>
+                  )}
+                </div>
+              )}
 
-              {/* Reopen — only for RESOLVED within the window */}
+              {/* Reopen */}
               {complaint.canReopen && (
-                <div className="mt-4 border-t border-[var(--border)] pt-4">
-                  <p className="mb-2 text-xs text-[var(--ink-3)]">
-                    Not satisfied with the resolution? Reopen this complaint.
+                <div className="border-t border-surface-200 pt-4">
+                  <p className="text-xs text-ink-faint mb-2.5">
+                    Not satisfied with the resolution? You can reopen this complaint.
                   </p>
                   <button
-                    type="button"
                     onClick={handleReopen}
                     disabled={reopening}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />
+                    <RotateCcw size={12} strokeWidth={2} />
                     {reopening ? 'Reopening…' : 'Reopen complaint'}
                   </button>
                 </div>
               )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
     </Layout>
   );

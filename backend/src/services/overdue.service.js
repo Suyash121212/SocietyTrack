@@ -11,16 +11,13 @@ const ESCALATE = { LOW: 'MEDIUM', MEDIUM: 'HIGH', HIGH: 'HIGH' };
  *   1. sla_policies row for exact category + priority
  *   2. sla_policies row for category with priority = null (category default)
  *   3. global overdue_days from app_config
- *   4. hard-coded fallback of 7
  */
 const resolveThreshold = (slaPolicies, globalDays, category, priority) => {
-  // Exact match
   const exact = slaPolicies.find(
     (p) => p.category === category && p.priority === priority,
   );
   if (exact) return exact.thresholdDays;
 
-  // Category default (priority = null row)
   const catDefault = slaPolicies.find(
     (p) => p.category === category && p.priority === null,
   );
@@ -30,85 +27,115 @@ const resolveThreshold = (slaPolicies, globalDays, category, priority) => {
 };
 
 export const startOverdueCron = () => {
-  // Run at the top of every hour
   cron.schedule('0 * * * *', async () => {
     console.log('[OverdueCron] Running SLA-aware overdue detection…');
     try {
-      // Load all config in one pass
+      // ── Load all config in one pass ─────────────────────────────────────
       const [slaPolicies, globalConfig] = await Promise.all([
         prisma.slaPolicy.findMany(),
         prisma.appConfig.findUnique({ where: { key: 'overdue_days' } }),
       ]);
       const globalDays = globalConfig ? parseInt(globalConfig.value, 10) : 7;
 
-      // Fetch all active (non-resolved) complaints
+      // ── Fetch all active complaints in one query ─────────────────────────
       const active = await prisma.complaint.findMany({
-        where: { status: { notIn: ['RESOLVED'] } },
-        select: {
-          id:        true,
-          category:  true,
-          priority:  true,
-          isOverdue: true,
-          createdAt: true,
-        },
+        where:  { status: { notIn: ['RESOLVED'] } },
+        select: { id: true, category: true, priority: true, status: true,
+                  isOverdue: true, createdAt: true },
       });
 
       const now = Date.now();
-      let markedCount     = 0;
-      let escalatedCount  = 0;
 
-      for (const complaint of active) {
-        const thresholdDays = resolveThreshold(
-          slaPolicies,
-          globalDays,
-          complaint.category,
-          complaint.priority,
-        );
-        const thresholdMs = thresholdDays * 86_400_000;
-        const age = now - new Date(complaint.createdAt).getTime();
+      // ── Classify without touching the DB ────────────────────────────────
+      // Bucket A: needs is_overdue = true, priority unchanged
+      // Bucket B: needs is_overdue = true, priority bumped (group by new priority)
+      // All audit rows collected into one array for createMany at the end.
 
-        if (age > thresholdMs && !complaint.isOverdue) {
-          // ── Mark overdue ──────────────────────────────────────────────────
-          const newPriority = ESCALATE[complaint.priority] ?? 'MEDIUM';
-          const didEscalate = complaint.priority !== newPriority;
+      const overdueOnlyIds    = [];           // bucket A IDs
+      const escalateGroups    = {};           // { 'MEDIUM': [id,…], 'HIGH': [id,…] }
+      const auditRows         = [];           // all StatusHistory rows to insert
 
-          await prisma.complaint.update({
-            where: { id: complaint.id },
-            data: {
-              isOverdue: true,
-              // Auto-bump priority if not already HIGH
-              ...(didEscalate ? { priority: newPriority } : {}),
-            },
-          });
+      for (const c of active) {
+        const thresholdDays = resolveThreshold(slaPolicies, globalDays, c.category, c.priority);
+        const age = now - new Date(c.createdAt).getTime();
 
-          // ── Append system audit row ───────────────────────────────────────
-          // changedBy = null signals a system action; the timeline renders this
-          // as "System" so residents and admins know why the priority changed.
-          await prisma.statusHistory.create({
-            data: {
-              complaintId: complaint.id,
+        if (age > thresholdDays * 86_400_000 && !c.isOverdue) {
+          const newPriority  = ESCALATE[c.priority] ?? 'MEDIUM';
+          const didEscalate  = c.priority !== newPriority;
+
+          if (didEscalate) {
+            if (!escalateGroups[newPriority]) escalateGroups[newPriority] = [];
+            escalateGroups[newPriority].push(c.id);
+            auditRows.push({
+              complaintId: c.id,
               changedBy:   null,
-              oldStatus:   complaint.status,   // status doesn't change, but we still
-              newStatus:   complaint.status,   // record the event for the audit log
-              note: didEscalate
-                ? `Auto-escalated by system: SLA of ${thresholdDays}d exceeded. Priority bumped ${complaint.priority ?? 'unset'} → ${newPriority}.`
-                : `Auto-flagged overdue by system: SLA of ${thresholdDays}d exceeded.`,
-            },
-          });
-
-          markedCount++;
-          if (didEscalate) escalatedCount++;
+              oldStatus:   c.status,
+              newStatus:   c.status,
+              note: `Auto-escalated by system: SLA of ${thresholdDays}d exceeded. Priority bumped ${c.priority ?? 'unset'} → ${newPriority}.`,
+            });
+          } else {
+            overdueOnlyIds.push(c.id);
+            auditRows.push({
+              complaintId: c.id,
+              changedBy:   null,
+              oldStatus:   c.status,
+              newStatus:   c.status,
+              note: `Auto-flagged overdue by system: SLA of ${thresholdDays}d exceeded.`,
+            });
+          }
         }
       }
 
-      // ── Clear overdue flag on anything now resolved ────────────────────────
-      const cleared = await prisma.complaint.updateMany({
-        where:  { status: 'RESOLVED', isOverdue: true },
-        data:   { isOverdue: false },
-      });
+      // ── Batch writes — fixed number of queries regardless of N ───────────
+      const writes = [];
+
+      // Bucket A: mark overdue, no priority change
+      if (overdueOnlyIds.length) {
+        writes.push(
+          prisma.complaint.updateMany({
+            where: { id: { in: overdueOnlyIds } },
+            data:  { isOverdue: true },
+          }),
+        );
+      }
+
+      // Bucket B: mark overdue + bump priority (one updateMany per target priority)
+      for (const [newPriority, ids] of Object.entries(escalateGroups)) {
+        writes.push(
+          prisma.complaint.updateMany({
+            where: { id: { in: ids } },
+            data:  { isOverdue: true, priority: newPriority },
+          }),
+        );
+      }
+
+      // All audit rows in one INSERT
+      if (auditRows.length) {
+        writes.push(prisma.statusHistory.createMany({ data: auditRows }));
+      }
+
+      // Clear resolved complaints' overdue flag
+      writes.push(
+        prisma.complaint.updateMany({
+          where: { status: 'RESOLVED', isOverdue: true },
+          data:  { isOverdue: false },
+        }),
+      );
+
+      // Fire all writes concurrently — they touch disjoint rows so no conflicts
+      const results = await Promise.all(writes);
+      const cleared = results.at(-1); // last write is always the clear
+
+      const markedCount    = overdueOnlyIds.length +
+        Object.values(escalateGroups).reduce((s, ids) => s + ids.length, 0);
+      const escalatedCount = Object.values(escalateGroups).reduce((s, ids) => s + ids.length, 0);
+
+      // Cache is now stale — invalidate so the dashboard reflects new counts
+      const { invalidateDashboardCache } = await import('./cache.js');
+      invalidateDashboardCache();
 
       console.log(
-        `[OverdueCron] Marked: ${markedCount} | Escalated: ${escalatedCount} | Cleared: ${cleared.count}`,
+        `[OverdueCron] Marked: ${markedCount} | Escalated: ${escalatedCount} | Cleared: ${cleared.count} | DB writes: ${writes.length}`,
       );
     } catch (err) {
       console.error('[OverdueCron] Error:', err);

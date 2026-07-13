@@ -2,19 +2,129 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeInUp 0.3s ease-out both;
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface-50 text-ink font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Premium scrollbar */
+  ::-webkit-scrollbar              { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track        { background: transparent; }
+  ::-webkit-scrollbar-thumb        { @apply bg-ink-ghost rounded-full; }
+  ::-webkit-scrollbar-thumb:hover  { @apply bg-ink-faint; }
+
+  /* Selection */
+  ::selection { @apply bg-brand-100 text-brand-800; }
+
+  /* Focus ring — consistent across all interactive elements */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2;
   }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
+@layer components {
+  /* ── Skeleton shimmer ──────────────────────────────────────────── */
+  .skeleton {
+    @apply rounded-xl bg-surface-100;
+    background: linear-gradient(
+      90deg,
+      theme('colors.surface.100') 25%,
+      theme('colors.surface.200') 50%,
+      theme('colors.surface.100') 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite linear;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  /* ── Card ──────────────────────────────────────────────────────── */
+  .card {
+    @apply bg-surface-0 rounded-2xl border border-surface-200 shadow-card;
   }
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-card-hover hover:-translate-y-px;
+  }
+
+  /* ── Button ────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold
+           transition-all duration-150 focus-visible:outline-none
+           focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:scale-[0.98]
+           shadow-sm hover:shadow-md rounded-xl px-5 py-2.5 text-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-0 text-ink border border-surface-200
+           hover:bg-surface-50 hover:border-surface-200 active:scale-[0.98]
+           shadow-card rounded-xl px-5 py-2.5 text-sm;
+  }
+  .btn-ghost {
+    @apply btn text-ink-muted hover:bg-surface-100 hover:text-ink
+           rounded-xl px-4 py-2 text-sm;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:bg-red-600 active:scale-[0.98]
+           shadow-sm rounded-xl px-5 py-2.5 text-sm;
+  }
+  .btn-sm {
+    @apply px-3.5 py-1.5 text-xs rounded-lg;
+  }
+  .btn-icon {
+    @apply btn w-9 h-9 rounded-xl bg-surface-0 border border-surface-200
+           text-ink-muted hover:bg-surface-50 hover:text-ink shadow-card;
+  }
+
+  /* ── Input ─────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-surface-0 border border-surface-200 rounded-xl
+           px-4 py-2.5 text-sm text-ink placeholder-ink-ghost
+           transition-all duration-150 shadow-card
+           focus:outline-none focus:border-brand-400 focus:shadow-input;
+  }
+  .input-icon { @apply pl-10; }
+
+  /* ── Label ─────────────────────────────────────────────────────── */
+  .label {
+    @apply block text-xs font-semibold text-ink-muted mb-1.5 uppercase tracking-wide;
+  }
+
+  /* ── Page header ───────────────────────────────────────────────── */
+  .page-header {
+    @apply mb-8 flex flex-wrap items-start justify-between gap-4;
+  }
+  .page-title {
+    @apply font-display text-2xl font-bold text-ink tracking-tight;
+  }
+  .page-subtitle {
+    @apply text-sm text-ink-muted mt-1;
+  }
+
+  /* ── Section header ────────────────────────────────────────────── */
+  .section-title {
+    @apply text-xs font-bold text-ink-faint uppercase tracking-widest mb-4;
+  }
+
+  /* ── Badge base ────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+           text-xs font-semibold border;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }

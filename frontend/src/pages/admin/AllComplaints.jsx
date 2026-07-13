@@ -2,139 +2,117 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Inbox, AlertTriangle, ListFilter, Search, X, RefreshCw } from 'lucide-react';
+import { Search, X, AlertTriangle, Inbox, RefreshCw, ListFilter } from 'lucide-react';
 import { axiosInstance } from '../../api/axios.js';
 import FilterBar from '../../components/FilterBar.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import PriorityBadge from '../../components/PriorityBadge.jsx';
 import Layout from '../../components/Layout.jsx';
 
-const TOKENS = {
-  '--bg': '#FAFAFA',
-  '--surface': '#FFFFFF',
-  '--border': '#E8EAED',
-  '--ink': '#111318',
-  '--ink-2': '#667085',
-  '--ink-3': '#98A2B3',
-  '--accent': '#3652E0',
-  '--accent-hover': '#2A41B8',
-  '--accent-soft': '#EEF1FE',
-};
+const URGENCY = [
+  { min: 55, label: 'Critical', cls: 'bg-red-50 text-red-700 border-red-200' },
+  { min: 40, label: 'High',     cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { min: 20, label: 'Medium',   cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { min: 0,  label: 'Low',      cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+];
 
-const tableContainer = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.035, delayChildren: 0.05 } },
+const UrgencyPill = ({ score }) => {
+  if (score == null) return null;
+  const { label, cls } = URGENCY.find(u => score >= u.min) ?? URGENCY[3];
+  return (
+    <span className={`badge ${cls}`}>
+      {label}
+      <span className="opacity-50 ml-0.5">·{score}</span>
+    </span>
+  );
 };
 
 const rowVariant = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: 'easeOut' } },
+  hidden: { opacity: 0, y: 6 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } },
+};
+const tableVariant = {
+  hidden: {},
+  show:   { transition: { staggerChildren: 0.03, delayChildren: 0.05 } },
 };
 
 export default function AllComplaints() {
   const navigate = useNavigate();
 
-  const [complaints, setComplaints] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [complaints,   setComplaints]   = useState([]);
+  const [nextCursor,   setNextCursor]   = useState(null);
+  const [hasMore,      setHasMore]      = useState(false);
+  const [loading,      setLoading]      = useState(true);
+  const [loadingMore,  setLoadingMore]  = useState(false);
+  const [error,        setError]        = useState('');
+  const [searchInput,  setSearchInput]  = useState('');
   const [activeFilters, setActiveFilters] = useState({});
   const debounceRef = useRef(null);
-  const abortRef = useRef(null);
+  const abortRef    = useRef(null);
 
-  const fetchComplaints = useCallback((filters = {}, q = '') => {
-    // Cancel whatever request is still in flight so a slow, older response
-    // can never land after a newer one and overwrite it with stale data.
+  const fetchComplaints = useCallback((filters = {}, q = '', cursor = null) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setLoading(true);
+    if (!cursor) { setLoading(true); setComplaints([]); setNextCursor(null); setHasMore(false); }
+    else setLoadingMore(true);
     setError('');
 
-    const params = {};
-    if (filters.status) params.status = filters.status;
-    if (filters.category) params.category = filters.category;
-    if (filters.date_from) params.date_from = filters.date_from;
-    if (filters.date_to) params.date_to = filters.date_to;
+    const params = { limit: 20, ...filters };
     if (q.trim()) params.q = q.trim();
+    if (cursor)   params.cursor = cursor;
+    // remove empty filter values
+    Object.keys(params).forEach(k => !params[k] && delete params[k]);
 
-    axiosInstance
-      .get('/admin/complaints', { params, signal: controller.signal })
-      .then(({ data }) => setComplaints(data))
-      .catch((err) => {
-        if (axios.isCancel(err) || err.code === 'ERR_CANCELED') return; // we cancelled it on purpose
-        setError('Failed to load complaints. Check your connection and try again.');
+    axiosInstance.get('/admin/complaints', { params, signal: controller.signal })
+      .then(({ data: r }) => {
+        setComplaints(prev => cursor ? [...prev, ...r.data] : r.data);
+        setNextCursor(r.nextCursor);
+        setHasMore(r.hasMore);
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
+      .catch(err => {
+        if (axios.isCancel(err) || err.code === 'ERR_CANCELED') return;
+        setError('Failed to load complaints.');
+      })
+      .finally(() => { if (!controller.signal.aborted) { setLoading(false); setLoadingMore(false); } });
   }, []);
 
   useEffect(() => {
-    fetchComplaints({}, '');
-    return () => {
-      clearTimeout(debounceRef.current);
-      abortRef.current?.abort();
-    };
+    fetchComplaints();
+    return () => { clearTimeout(debounceRef.current); abortRef.current?.abort(); };
   }, [fetchComplaints]);
 
-  const handleFilterChange = (newFilters) => {
-    // A filter change should win over any search debounce still waiting to
-    // fire with the previous filters — otherwise the stale one can land
-    // after this one and silently undo the filter.
+  const handleFilterChange = (f) => { clearTimeout(debounceRef.current); setActiveFilters(f); fetchComplaints(f, searchInput); };
+  const handleSearch = (e) => {
+    const val = e.target.value; setSearchInput(val);
     clearTimeout(debounceRef.current);
-    setActiveFilters(newFilters);
-    fetchComplaints(newFilters, searchInput);
+    debounceRef.current = setTimeout(() => fetchComplaints(activeFilters, val), 300);
   };
-
-  const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearchInput(val);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchComplaints(activeFilters, val);
-    }, 300);
-  };
-
-  const clearSearch = () => {
-    setSearchInput('');
-    clearTimeout(debounceRef.current);
-    fetchComplaints(activeFilters, '');
-  };
-
-  const retry = () => fetchComplaints(activeFilters, searchInput);
+  const clearSearch = () => { setSearchInput(''); fetchComplaints(activeFilters, ''); };
+  const loadMore    = () => { if (nextCursor && !loadingMore) fetchComplaints(activeFilters, searchInput, nextCursor); };
 
   return (
     <Layout>
-      <div className="mx-auto max-w-6xl p-6 font-['Inter'] text-[var(--ink)] md:p-8" style={TOKENS}>
-        <div className="mb-6 flex items-center justify-between">
+      <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-5">
+
+        <div className="page-header">
           <div>
-            <h1 className="font-['Plus_Jakarta_Sans'] text-2xl font-bold tracking-tight text-[var(--ink)]">
-              All Complaints
-            </h1>
-            <p className="mt-1 text-sm text-[var(--ink-2)]">Manage and track all society complaints</p>
+            <h1 className="page-title">All Complaints</h1>
+            <p className="page-subtitle">Triage and manage every maintenance request</p>
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="relative mb-4">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[var(--ink-3)]">
-            <Search size={15} strokeWidth={2} />
-          </div>
+        {/* Search */}
+        <div className="relative">
+          <Search size={15} strokeWidth={2} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
           <input
-            type="text"
-            value={searchInput}
-            onChange={handleSearchChange}
+            type="text" value={searchInput} onChange={handleSearch}
             placeholder="Search by description, flat number, or category…"
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 pl-10 pr-10 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] shadow-sm transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+            className="input input-icon pr-10"
           />
           {searchInput && (
-            <button
-              onClick={clearSearch}
-              className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
-              aria-label="Clear search"
-            >
+            <button onClick={clearSearch} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink-muted transition-colors" aria-label="Clear">
               <X size={14} strokeWidth={2} />
             </button>
           )}
@@ -142,133 +120,97 @@ export default function AllComplaints() {
 
         <FilterBar onChange={handleFilterChange} />
 
-        <div
-          className="mt-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm"
-        >
+        {/* Table */}
+        <div className="card overflow-hidden">
           <AnimatePresence mode="wait">
             {error ? (
-              <motion.div
-                key="error"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center px-6 py-20 text-center"
+              <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center py-20 px-6 text-center"
               >
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
                   <AlertTriangle size={22} strokeWidth={1.75} />
                 </div>
-                <p className="font-semibold text-[var(--ink)]">Couldn&apos;t load complaints</p>
-                <p className="mt-1 max-w-xs text-sm text-[var(--ink-2)]">{error}</p>
-                <button
-                  type="button"
-                  onClick={retry}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
-                >
-                  <RefreshCw size={14} strokeWidth={2} />
-                  Try again
+                <p className="font-semibold text-ink">Couldn&apos;t load complaints</p>
+                <p className="mt-1 text-sm text-ink-muted">{error}</p>
+                <button onClick={() => fetchComplaints(activeFilters, searchInput)} className="btn-primary btn-sm mt-4">
+                  <RefreshCw size={13} strokeWidth={2} /> Try again
                 </button>
               </motion.div>
             ) : loading ? (
-              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2.5 p-5">
-                {[...Array(6)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-11 animate-pulse rounded-lg bg-[var(--bg)]"
-                    style={{ animationDelay: `${i * 60}ms` }}
-                  />
+              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-5 space-y-2.5">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="skeleton h-12 rounded-xl" style={{ animationDelay: `${i * 50}ms` }} />
                 ))}
               </motion.div>
             ) : complaints.length === 0 ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-                className="flex flex-col items-center justify-center px-6 py-20 text-center"
+              <motion.div key="empty" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center py-20 px-6 text-center"
               >
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)]">
-                  <Inbox size={24} strokeWidth={1.75} />
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+                  <Inbox size={22} strokeWidth={1.75} />
                 </div>
-                <p className="font-semibold text-[var(--ink)]">No complaints match the current filters</p>
-                <p className="mt-1 text-sm text-[var(--ink-3)]">
-                  {searchInput ? `No results for "${searchInput}"` : 'Try adjusting your filters'}
+                <p className="font-semibold text-ink">No complaints match</p>
+                <p className="mt-1 text-sm text-ink-faint">
+                  {searchInput ? `No results for "${searchInput}"` : 'Try adjusting the filters'}
                 </p>
               </motion.div>
             ) : (
               <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-5 py-3">
-                  <ListFilter size={13} className="text-[var(--ink-3)]" />
-                  <span className="text-xs font-semibold uppercase tracking-widest text-[var(--ink-2)]">Results</span>
-                  <motion.span
-                    key={complaints.length}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-bold tabular-nums text-[var(--accent)]"
-                  >
-                    {complaints.length}
+                {/* Header row */}
+                <div className="flex items-center gap-2 border-b border-surface-200 bg-surface-50 px-5 py-3">
+                  <ListFilter size={12} className="text-ink-faint" strokeWidth={2} />
+                  <span className="text-xs font-semibold text-ink-faint uppercase tracking-widest">Results</span>
+                  <motion.span key={complaints.length} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    className="badge bg-brand-50 text-brand-700 border-brand-200 ml-0.5">
+                    {complaints.length}{hasMore ? '+' : ''}
                   </motion.span>
                   {searchInput && (
-                    <span className="ml-1 text-xs text-[var(--ink-3)]">
-                      for <span className="font-medium text-[var(--ink-2)]">&quot;{searchInput}&quot;</span>
+                    <span className="ml-1 text-xs text-ink-faint">
+                      for <span className="font-medium text-ink-muted">"{searchInput}"</span>
                     </span>
                   )}
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="border-b border-[var(--border)] bg-[var(--bg)]">
+                    <thead className="border-b border-surface-200 bg-surface-50">
                       <tr>
-                        {['Flat No', 'Category', 'Status', 'Priority', 'Overdue', 'Raised On'].map((h) => (
-                          <th
-                            key={h}
-                            className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-widest text-[var(--ink-3)]"
-                          >
-                            {h}
-                          </th>
+                        {['Urgency', 'Flat', 'Category', 'Status', 'Priority', 'Raised On'].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-ink-faint uppercase tracking-widest whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <motion.tbody
-                      variants={tableContainer}
-                      initial="hidden"
-                      animate="show"
-                      className="divide-y divide-[var(--bg)]"
-                    >
-                      {complaints.map((c) => (
+                    <motion.tbody variants={tableVariant} initial="hidden" animate="show" className="divide-y divide-surface-100">
+                      {complaints.map(c => (
                         <motion.tr
                           key={c.id}
                           variants={rowVariant}
-                          whileHover={{
-                            backgroundColor: c.isOverdue ? 'rgba(254,242,242,0.9)' : 'rgba(238,241,254,0.6)',
-                          }}
                           onClick={() => navigate(`/admin/complaints/${c.id}`)}
-                          className={`cursor-pointer transition-colors ${c.isOverdue ? 'bg-red-50/40' : ''}`}
+                          className={`cursor-pointer transition-colors hover:bg-surface-50 ${c.isOverdue ? 'bg-red-50/30' : ''}`}
+                          whileHover={{ backgroundColor: c.isOverdue ? 'rgba(254,242,242,0.7)' : 'rgba(248,250,252,1)' }}
                         >
-                          <td className="px-5 py-3.5 font-semibold text-[var(--ink)]">{c.flatNo ?? '—'}</td>
-                          <td className="px-5 py-3.5 capitalize text-[var(--ink-2)]">{c.category.toLowerCase()}</td>
-                          <td className="px-5 py-3.5">
-                            <StatusBadge status={c.status} />
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <PriorityBadge priority={c.priority} />
-                          </td>
-                          <td className="px-5 py-3.5">
-                            {c.isOverdue && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
-                                <AlertTriangle size={11} strokeWidth={2.5} />
-                                Overdue
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3.5 text-[var(--ink-3)]">
-                            {new Date(c.createdAt).toLocaleDateString()}
+                          <td className="px-5 py-3.5"><UrgencyPill score={c.urgencyScore} /></td>
+                          <td className="px-5 py-3.5 font-semibold text-ink">{c.flatNo ?? '—'}</td>
+                          <td className="px-5 py-3.5 capitalize text-ink-muted">{c.category.toLowerCase()}</td>
+                          <td className="px-5 py-3.5"><StatusBadge status={c.status} /></td>
+                          <td className="px-5 py-3.5"><PriorityBadge priority={c.priority} /></td>
+                          <td className="px-5 py-3.5 text-ink-faint tabular-nums whitespace-nowrap">
+                            {new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </td>
                         </motion.tr>
                       ))}
                     </motion.tbody>
                   </table>
                 </div>
+
+                {/* Load more */}
+                {hasMore && (
+                  <div className="border-t border-surface-200 bg-surface-50 px-5 py-3 text-center">
+                    <button onClick={loadMore} disabled={loadingMore} className="btn-ghost btn-sm">
+                      {loadingMore ? <><RefreshCw size={13} className="animate-spin" strokeWidth={2} /> Loading…</> : 'Load more'}
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

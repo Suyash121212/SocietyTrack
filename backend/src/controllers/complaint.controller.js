@@ -86,16 +86,45 @@ export const getMyComplaints = async (req, res) => {
   const config = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
   const reopenWindowMs = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
 
-  const complaints = await prisma.complaint.findMany({
-    where:   { userId: req.user.id },
-    orderBy: { createdAt: 'desc' },
+  // ── Cursor pagination ───────────────────────────────────────────────────────
+  const limit  = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+  const cursor = req.query.cursor ?? null;
+
+  let cursorCondition = {};
+  if (cursor) {
+    try {
+      const [iso, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+      const cursorDate = new Date(iso);
+      if (!isNaN(cursorDate.getTime()) && id) {
+        cursorCondition = {
+          OR: [
+            { createdAt: { lt: cursorDate } },
+            { createdAt: cursorDate, id: { lt: id } },
+          ],
+        };
+      }
+    } catch { /* malformed cursor — treat as first page */ }
+  }
+
+  const where = {
+    userId: req.user.id,
+    ...(Object.keys(cursorCondition).length ? { AND: [cursorCondition] } : {}),
+  };
+
+  const rows = await prisma.complaint.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take:    limit + 1,
     include: {
       statusHistory: { orderBy: { changedAt: 'asc' }, select: { changedAt: true } },
-      photos: { orderBy: { position: 'asc' }, select: { thumbnailUrl: true, url: true } },
+      photos:        { orderBy: { position: 'asc' }, select: { thumbnailUrl: true, url: true } },
     },
   });
 
-  return res.status(200).json(complaints.map((c) => {
+  const hasMore = rows.length > limit;
+  const page    = hasMore ? rows.slice(0, limit) : rows;
+
+  const data = page.map((c) => {
     const canReopen =
       c.status === 'RESOLVED' &&
       c.resolvedAt !== null &&
@@ -111,27 +140,40 @@ export const getMyComplaints = async (req, res) => {
       createdAt:      c.createdAt,
       resolvedAt:     c.resolvedAt,
       canReopen,
-      // Return first thumbnail for list-view previews
       thumbnailUrl:   c.photos[0]?.thumbnailUrl ?? null,
       timeInStatus:   formatMs(timeInStatusMs(c)),
       resolutionTime: formatMs(resolutionTimeMs(c)),
     };
-  }));
+  });
+
+  const last = page.at(-1);
+  const nextCursor = hasMore && last
+    ? Buffer.from(`${new Date(last.createdAt).toISOString()}|${last.id}`).toString('base64url')
+    : null;
+
+  return res.status(200).json({ data, nextCursor, hasMore });
 };
 
 export const getComplaintById = async (req, res) => {
   const { id } = req.params;
 
-  const complaint = await prisma.complaint.findUnique({
-    where: { id },
-    include: {
-      statusHistory: {
-        orderBy: { changedAt: 'asc' },
-        include: { admin: { select: { name: true } } },
+  // Fetch complaint and reopen config in parallel — they're independent reads.
+  // The config is only needed for RESIDENT requests on RESOLVED complaints,
+  // but the cost of fetching it unconditionally is one extra Redis/DB lookup
+  // versus the complexity of conditional parallel fetching — worth it.
+  const [complaint, reopenConfig] = await Promise.all([
+    prisma.complaint.findUnique({
+      where: { id },
+      include: {
+        statusHistory: {
+          orderBy: { changedAt: 'asc' },
+          include: { admin: { select: { name: true } } },
+        },
+        photos: { orderBy: { position: 'asc' } },
       },
-      photos: { orderBy: { position: 'asc' } },
-    },
-  });
+    }),
+    prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } }),
+  ]);
 
   if (!complaint) {
     return res.status(404).json({ error: 'Complaint not found' });
@@ -143,8 +185,7 @@ export const getComplaintById = async (req, res) => {
 
   let canReopen = false;
   if (req.user.role === 'RESIDENT' && complaint.status === 'RESOLVED' && complaint.resolvedAt) {
-    const config = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
-    const windowMs = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
+    const windowMs = (reopenConfig ? parseInt(reopenConfig.value, 10) : 3) * 86_400_000;
     canReopen = Date.now() - new Date(complaint.resolvedAt).getTime() <= windowMs;
   }
 
@@ -182,10 +223,15 @@ export const getComplaintById = async (req, res) => {
 export const reopenComplaint = async (req, res) => {
   const { id } = req.params;
 
-  const complaint = await prisma.complaint.findUnique({
-    where: { id },
-    include: { user: { select: { email: true } } },
-  });
+  // Fetch the complaint and the reopen window config in parallel —
+  // both are needed before any validation and are independent reads.
+  const [complaint, reopenConfig] = await Promise.all([
+    prisma.complaint.findUnique({
+      where: { id },
+      include: { user: { select: { email: true } } },
+    }),
+    prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } }),
+  ]);
 
   if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
@@ -201,12 +247,11 @@ export const reopenComplaint = async (req, res) => {
     return res.status(400).json({ error: 'Complaint has no resolved timestamp' });
   }
 
-  const config    = await prisma.appConfig.findUnique({ where: { key: 'reopen_window_days' } });
-  const windowMs  = (config ? parseInt(config.value, 10) : 3) * 86_400_000;
-  const age       = Date.now() - new Date(complaint.resolvedAt).getTime();
+  const windowMs   = (reopenConfig ? parseInt(reopenConfig.value, 10) : 3) * 86_400_000;
+  const windowDays = reopenConfig ? parseInt(reopenConfig.value, 10) : 3;
+  const age        = Date.now() - new Date(complaint.resolvedAt).getTime();
 
   if (age > windowMs) {
-    const windowDays = config ? parseInt(config.value, 10) : 3;
     return res.status(400).json({
       error: `Reopen window has expired. Complaints can only be reopened within ${windowDays} day${windowDays !== 1 ? 's' : ''} of resolution. Please raise a new complaint.`,
     });
