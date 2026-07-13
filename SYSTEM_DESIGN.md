@@ -1,6 +1,4 @@
 # SocietyTrack — System Design
-
-
 ---
 
 ## 1. High-Level Architecture
@@ -10,6 +8,7 @@ SocietyTrack follows a three-tier architecture — a React SPA, a Node.js/Expres
 Every request enters the Express server. Authenticated routes are protected by JWT middleware. Write operations enqueue async side-effects (emails) rather than executing them inline. The BullMQ worker runs in the same Node.js process but on a separate event-loop path, so SMTP latency never blocks the HTTP response.
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '12px'}, 'flowchart': {'nodeSpacing': 12, 'rankSpacing': 18, 'padding': 4}}}%%
 flowchart TB
     A[Browser - React + Vite] -->|HTTP / REST| B[Express API - Render]
     A <-.->|WebSocket - Socket.IO| B
@@ -34,6 +33,7 @@ Every status transition — whether triggered by an admin action or the system c
 **State machine enforcement:** transitions are validated server-side against an explicit map before any DB write, and any transition not in the map is rejected with HTTP 400 — no client-side trust, no ad-hoc if-checks.
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '12px'}}}%%
 stateDiagram-v2
     [*] --> OPEN
     OPEN --> IN_PROGRESS: Admin updates status
@@ -62,23 +62,20 @@ A database trigger fires synchronously on every write and has no access to appli
 **Threshold resolution** falls back through three levels: an exact category + priority match, then a category-level default, then a global default — so every complaint always resolves to *some* threshold even if no specific rule was configured for its combination.
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '11px'}, 'flowchart': {'nodeSpacing': 10, 'rankSpacing': 16, 'padding': 3}}}%%
 flowchart TD
-    A[node-cron fires - hourly] --> B[Load sla_policies + app_config]
-    B --> C[Load all active complaints - status NOT IN RESOLVED]
-    C --> D[For each complaint - pure JS, no DB calls in loop]
-    D --> E[Resolve threshold: exact match to category default to global]
-    E --> F{Age exceeds threshold AND not already overdue?}
-    F -->|No| G[Skip]
-    F -->|Yes| H{Priority already HIGH?}
-    H -->|Yes| I[Bucket: overdue-only]
-    H -->|No| J[Bucket: overdue + escalate priority]
-    I --> K[Batched writes after loop completes]
-    J --> K
-    K --> L[updateMany: overdue-only IDs]
-    K --> M[updateMany: per priority bucket, max 2 buckets]
-    K --> N[createMany: status_history audit rows]
-    K --> O[updateMany: clear overdue flag on RESOLVED]
-    L & M & N & O --> P[Invalidate dashboard cache - Redis DEL]
+    A[Hourly cron] --> B[Load SLA rules + config]
+    B --> C[Load active complaints]
+    C --> D[Resolve threshold per complaint]
+    D --> E{Overdue?}
+    E -->|No| F[Skip]
+    E -->|Yes| G{Priority = HIGH?}
+    G -->|Yes| H[Overdue only]
+    G -->|No| I[Overdue + escalate]
+    H --> J[Batched writes]
+    I --> J
+    J --> K[Update statuses + history]
+    K --> L[Invalidate cache]
 ```
 
 **Scalability note:** the classification loop is pure JS — zero DB round-trips per complaint. For a society with 500 active complaints, the cron still fires a fixed number of queries regardless of how many breach their SLA.
@@ -90,15 +87,15 @@ flowchart TD
 Render's free tier has an ephemeral filesystem — anything written to disk is lost on restart. Cloudinary solves storage, CDN delivery, and thumbnail generation in one service, so the backend never touches binary image data.
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '12px'}, 'flowchart': {'nodeSpacing': 10, 'rankSpacing': 16, 'padding': 3}}}%%
 flowchart LR
-    A[Resident selects up to 3 photos] --> B[Multer validates MIME type + 5MB limit]
-    B -->|Invalid| C[Reject - 400, no DB write]
-    B -->|Valid| D[Stream to Cloudinary - no local disk write]
-    D --> E[Cloudinary stores original + eager thumbnail transform]
-    E --> F[Returns secure_url + thumbnail secure_url]
-    F --> G[complaint_photos row: url, thumbnail_url, position]
-    G --> H[List views load thumbnail_url]
-    G --> I[Detail view loads full-resolution url]
+    A[Select up to 3 photos] --> B[Multer validates type/size]
+    B -->|Invalid| C[Reject - 400]
+    B -->|Valid| D[Stream to Cloudinary]
+    D --> E[Store original + thumbnail]
+    E --> F[complaint_photos row]
+    F --> G[List view: thumbnail]
+    F --> H[Detail view: full-res]
 ```
 
 **Why store both URLs:** list views need thumbnails (~4 KB each). Fetching the full-resolution URL at list time would be wasteful — storing `thumbnail_url` at upload time means the list query returns display-ready data with no extra API calls or client-side URL manipulation.
@@ -112,6 +109,7 @@ flowchart LR
 If Nodemailer were called inline in the controller, the HTTP response would wait for SMTP — Gmail's SMTP can take 200–800 ms. On a notice broadcast to 50 residents, that becomes up to 40 seconds of blocking. The queue decouples API response time from SMTP latency entirely.
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '11px'}, 'sequence': {'actorMargin': 25, 'messageMargin': 10, 'boxMargin': 4, 'noteMargin': 4, 'height': 26, 'width': 90}}}%%
 sequenceDiagram
     participant AB as Admin Browser
     participant API as Express API
@@ -166,6 +164,7 @@ sequenceDiagram
 ## 7. Database Schema
 
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '11px'}, 'er': {'entityPadding': 6, 'minEntityWidth': 90, 'minEntityHeight': 55}}}%%
 erDiagram
     USERS ||--o{ COMPLAINTS : raises
     USERS ||--o{ STATUS_HISTORY : "changes (nullable = system)"
@@ -237,8 +236,12 @@ erDiagram
 
 Not part of the five core subsystems above, included for completeness.
 
-**Authentication module**
+**Authentication & API design**
+
+Role is checked server-side on every protected route via middleware — never trusted from the JWT payload alone without the role claim being re-verified against what the token was signed with. Every mutating endpoint validates its request body against a schema (Zod) before touching the database, and every error response follows one consistent envelope, `{ success, error: { code, message } }`, rather than ad-hoc shapes per route. Auth routes are rate-limited (5 attempts / 15 minutes) to blunt credential-stuffing attempts, and composite indexes on `(status, is_overdue)` and `(complaint_id, changed_at)` match the two query patterns the application actually runs, rather than indexing speculatively.
+
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '11px'}, 'sequence': {'actorMargin': 25, 'messageMargin': 10, 'boxMargin': 4, 'height': 26, 'width': 90}}}%%
 sequenceDiagram
     participant R as Resident/Admin
     participant API as Express API
@@ -255,7 +258,11 @@ sequenceDiagram
 ```
 
 **Dashboard & reporting module**
+
+Beyond simple status and category counts, two metrics directly answer the brief's own question of "which issues keep coming back": a recurring-issue query flagging any flat-and-category combination with three or more complaints in 60 days, and average resolution time grouped by category. All aggregation queries are cached with a 60-second TTL and invalidated on any status, priority, or overdue mutation — avoiding repeated GROUP BY computation on every dashboard load while keeping numbers accurate immediately after any admin action.
+
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '12px'}, 'flowchart': {'nodeSpacing': 10, 'rankSpacing': 16, 'padding': 3}}}%%
 flowchart TD
     A[Admin opens dashboard] --> B{Redis cache valid? TTL 60s}
     B -->|Yes| C[Serve cached stats]
@@ -267,4 +274,10 @@ flowchart TD
     E & F & G & H --> I[Cache result in Redis, 60s TTL]
     I --> C
 ```
+
+**Notice board design**
+
+Pinning uses a simple `is_important` boolean rather than a priority scale — a notice is binary in practice: either it needs to be seen first, or it doesn't. Each notice also carries `valid_from` and `valid_until` timestamps; once `valid_until` passes, the notice automatically falls out of the pinned and visible set with no manual admin cleanup. This prevents a "water supply interrupted Sunday" notice from still sitting pinned at the top the following Wednesday — a real usability problem with a naive pin-forever design.
+
+---
 
