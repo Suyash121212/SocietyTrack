@@ -539,4 +539,4 @@ society-maintenance-tracker/
 **Suyash Kakade** — Vishwakarma Institute of Information Technology  
 [GitHub](https://github.com/Suyash121212) · [LinkedIn](https://linkedin.com/in/suyash-kakade)
 
-Built as part of the Unthinkable Solutions fullstack engineering assessment.
+
