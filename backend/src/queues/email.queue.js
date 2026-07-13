@@ -10,6 +10,7 @@ export const JOB_IMPORTANT_NOTICE = 'important_notice';
 
 // Single Queue instance for the whole process.
 // The Queue only needs a producer connection — it never blocks.
+
 const emailQueue = new Queue(EMAIL_QUEUE, {
   connection: createRedisConnection(),
   defaultJobOptions: {
