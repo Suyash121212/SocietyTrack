@@ -15,6 +15,13 @@
 
 ---
 
+<!-- ▶ Replace this with your recorded GIF once exported -->
+<p align="center">
+  <img src="./docs/screenshots/demo.gif" alt="SocietyTrack demo walkthrough" width="100%" />
+</p>
+
+---
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -26,8 +33,9 @@
 7. [API Reference](#api-reference)
 8. [System Design](#system-design)
 9. [Project Structure](#project-structure)
-10. [Deployment](#deployment)
-11. [Author](#author)
+10. [Screenshots](#screenshots)
+11. [Deployment](#deployment)
+12. [Author](#author)
 
 ---
 
@@ -502,6 +510,49 @@ society-maintenance-tracker/
                 ├── ComplaintDetail.jsx  # Live updates + reopen + metrics
                 └── NoticeBoardPage.jsx  # Notice board
 ```
+
+---
+
+## Screenshots
+
+> Screenshots are stored in `docs/screenshots/`. Replace the placeholders below once you have taken them.
+
+### Landing Page
+<p align="center">
+  <img src="./docs/screenshots/landing-page.png" alt="Landing page" width="100%" />
+</p>
+
+### Admin Dashboard
+<p align="center">
+  <img src="./docs/screenshots/admindashboard.png" alt="Admin dashboard — stat cards, recurring issues, weekly trend chart" width="100%" />
+</p>
+
+
+
+### Complaint Detail & Status History
+<p align="center">
+  <img src="./docs/screenshots/overdue_detection and status hostory.pngdth="100%" />
+</p>
+
+### Raise a Complaint (Resident)
+<p align="center">
+  <img src="./docs/screenshots/raise-complaint.png" alt="Resident complaint form with category picker and multi-photo upload" width="100%" />
+</p>
+
+### Notice Board
+<p align="center">
+  <img src="./docs/screenshots/notice.png" alt="Society notice board with important pin and expiry badge" width="100%" />
+</p>
+
+### Email Notification
+<p align="center">
+  <img src="./docs/screenshots/notification.png" alt="Status change email received by resident via Gmail" width="80%" />
+</p>
+
+### Settings — SLA Policy Matrix
+<p align="center">
+  <img src="./docs/screenshots/sla.png" alt="Admin settings page showing the SLA policy matrix editor" width="100%" />
+</p>
 
 ---
 
