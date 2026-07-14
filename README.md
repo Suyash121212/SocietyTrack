@@ -519,39 +519,39 @@ society-maintenance-tracker/
 
 ### Landing Page
 <p align="center">
-  <img src="./docs/screenshots/landing-page.png" alt="Landing page" width="100%" />
+  <img src="./docs/screenshots/landing-page.png" alt="Landing page" width="70%" />
 </p>
 
 ### Admin Dashboard
 <p align="center">
-  <img src="./docs/screenshots/admindashboard.png" alt="Admin dashboard — stat cards, recurring issues, weekly trend chart" width="100%" />
+  <img src="./docs/screenshots/admindashboard.png" alt="Admin dashboard — stat cards, recurring issues, weekly trend chart" width="70%" />
 </p>
 
 
 
 ### Complaint Detail & Status History
 <p align="center">
-  <img src="./docs/screenshots/overdue_detection and status hostory.png" width="100%" />
+  <img src="./docs/screenshots/overdue_detection and status hostory.png" width="70%" />
 </p>
 
 ### Raise a Complaint (Resident)
 <p align="center">
-  <img src="./docs/screenshots/raise-complaint.png" alt="Resident complaint form with category picker and multi-photo upload" width="100%" />
+  <img src="./docs/screenshots/raise-complaint.png" alt="Resident complaint form with category picker and multi-photo upload" width="70%" />
 </p>
 
 ### Notice Board
 <p align="center">
-  <img src="./docs/screenshots/notice.png" alt="Society notice board with important pin and expiry badge" width="100%" />
+  <img src="./docs/screenshots/notice.png" alt="Society notice board with important pin and expiry badge" width="70%" />
 </p>
 
 ### Email Notification
 <p align="center">
-  <img src="./docs/screenshots/notification.png" alt="Status change email received by resident via Gmail" width="80%" />
+  <img src="./docs/screenshots/notification.png" alt="Status change email received by resident via Gmail" width="70%" />
 </p>
 
 ### Settings — SLA Policy Matrix
 <p align="center">
-  <img src="./docs/screenshots/sla.png" alt="Admin settings page showing the SLA policy matrix editor" width="100%" />
+  <img src="./docs/screenshots/sla.png" alt="Admin settings page showing the SLA policy matrix editor" width="70%" />
 </p>
 
 ---
