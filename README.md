@@ -17,7 +17,7 @@
 
 <!-- ▶ Replace this with your recorded GIF once exported -->
 <p align="center">
-  <img src="./docs/screenshots/demo.gif" alt="SocietyTrack demo walkthrough" width="100%" />
+  <img src="./docs/screenshots/demo.gif" alt="SocietyTrack demo walkthrough" width="70%" />
 </p>
 
 ---
