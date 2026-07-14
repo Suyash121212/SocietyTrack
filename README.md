@@ -10,8 +10,8 @@
 ![Render](https://img.shields.io/badge/API-Render-46E3B7?logo=render&logoColor=black)
 ![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?logo=vercel&logoColor=white)
 
-**Live demo:** [https://society-track.vercel.app](https://society-track.vercel.app)  
-**API:** [https://society-track-api.onrender.com](https://society-track-api.onrender.com)
+**Live demo:** [https://society-track.vercel.app/](https://society-track.vercel.app/)  
+**API:** [https://societytrack.onrender.com/](https://societytrack.onrender.com/)
 
 ---
 
@@ -119,8 +119,8 @@ Housing societies manage maintenance through WhatsApp threads and paper register
 ### 1 — Clone
 
 ```bash
-git clone https://github.com/Suyash121212/society-maintenance-tracker.git
-cd society-maintenance-tracker
+git clone https://github.com/Suyash121212/SocietyTrack
+cd SocietyTrack
 ```
 
 ### 2 — Backend setup
