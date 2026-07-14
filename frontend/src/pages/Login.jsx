@@ -5,7 +5,7 @@ import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowLeft, Shield, Quote
 import { axiosInstance } from '../api/axios.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
-const fade   = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } } };
+const fade = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } } };
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07 } } };
 
 const TESTIMONIALS = [
@@ -15,12 +15,12 @@ const TESTIMONIALS = [
 
 export default function Login() {
   const { login } = useAuth();
-  const navigate   = useNavigate();
-  const reduce     = useReducedMotion();
+  const navigate = useNavigate();
+  const reduce = useReducedMotion();
 
-  const [form, setForm]     = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [showPass, setShowPass] = useState(false);
-  const [error, setError]   = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -178,6 +178,65 @@ export default function Login() {
               ) : 'Sign in'}
             </button>
           </motion.form>
+
+          {/* Demo Accounts */}
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-4 mt-6">
+            <h3 className="text-sm font-semibold text-blue-900">
+              Demo Accounts
+            </h3>
+
+            {/* Admin */}
+            <div className="flex items-center justify-between rounded-lg bg-white p-3 border border-blue-100">
+              <div>
+                <p className="font-medium text-slate-900"> Admin</p>
+                <p className="text-xs text-slate-600">
+                  <span className="font-medium">Email:</span> admin@society.com
+                </p>
+                <p className="text-xs text-slate-600">
+                  <span className="font-medium">Password:</span> Admin@123
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setForm({
+                    email: "admin@society.com",
+                    password: "Admin@123",
+                  })
+                }
+                className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-brand-700"
+              >
+                Use Demo
+              </button>
+            </div>
+
+            {/* Resident */}
+            <div className="flex items-center justify-between rounded-lg bg-white p-3 border border-blue-100">
+              <div>
+                <p className="font-medium text-slate-900"> Resident</p>
+                <p className="text-xs text-slate-600">
+                  <span className="font-medium">Email:</span> suyash.kakade@gmail.com
+                </p>
+                <p className="text-xs text-slate-600">
+                  <span className="font-medium">Password:</span> Password123!
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setForm({
+                    email: "suyash.kakade@gmail.com",
+                    password: "Password123!",
+                  })
+                }
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-700"
+              >
+                Use Demo
+              </button>
+            </div>
+          </div>
 
           <motion.p variants={fade} className="mt-6 text-center text-xs text-ink-muted">
             Don&apos;t have an account?{' '}
