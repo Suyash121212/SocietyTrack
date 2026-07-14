@@ -531,7 +531,7 @@ society-maintenance-tracker/
 
 ### Complaint Detail & Status History
 <p align="center">
-  <img src="./docs/screenshots/overdue_detection and status hostory.pngdth="100%" />
+  <img src="./docs/screenshots/overdue_detection and status hostory.png width="100%" />
 </p>
 
 ### Raise a Complaint (Resident)
