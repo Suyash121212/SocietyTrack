@@ -36,11 +36,10 @@ app.use(express.json());
 
 const authLimiter = rateLimit({
   windowMs:       15 * 60 * 1000, // 15 minutes
-  max:            5,
-  message:        { error: 'Too many attempts. Please wait 15 minutes before trying again.' },
+  max:            20,
+  message:        { error: 'Too many login attempts. Please wait 15 minutes before trying again.' },
   standardHeaders: true,
   legacyHeaders:   false,
-  // Skip rate limiting in test environments
   skip: () => process.env.NODE_ENV === 'test',
 });
 

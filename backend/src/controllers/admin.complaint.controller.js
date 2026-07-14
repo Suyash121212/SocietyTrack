@@ -189,10 +189,10 @@ export const getAllComplaints = async (req, res) => {
 
     // Urgency sort within each page — DB gives us a stable cursor-ordered
     // set; urgency re-orders within that set so the hottest items surface first.
-    shaped.sort((a, b) =>
-      b.urgencyScore - a.urgencyScore ||
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
+    // shaped.sort((a, b) =>
+    //   b.urgencyScore - a.urgencyScore ||
+    //   new Date(b.createdAt) - new Date(a.createdAt)
+    // );
 
     const last       = page.at(-1);
     const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
